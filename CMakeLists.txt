@@ -21,6 +21,8 @@ install(PROGRAMS
   scripts/robot_ros_node.py
   scripts/controller_test.py
   scripts/publish_guides.py
+  scripts/logger.py
+  scripts/plot_odometry.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

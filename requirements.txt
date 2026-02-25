@@ -1,0 +1,13 @@
+# Non-ROS Python dependencies for navbot_ros
+# ROS packages such as rclpy, cv_bridge, tf2_ros, geometry_msgs, nav_msgs,
+# sensor_msgs, and visualization_msgs are provided by the ROS installation.
+
+numpy==1.26.4
+scipy==1.13.1
+
+# ArUco is part of OpenCV contrib modules (cv2.aruco).
+opencv-contrib-python==4.11.0.86
+
+matplotlib
+pygame
+pyserial
