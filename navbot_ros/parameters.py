@@ -55,16 +55,16 @@ z_var = 0.01
 
 #Camera Extrinsics
 #Odom to Tripod Mount: 
-tripod_x = -0.1
+tripod_x = 0.2
 tripod_y = 1.3  
 tripod_z = 2.7
-tripod_roll = 0.0
-tripod_pitch = 1.3
-tripod_yaw = -1.570796
+tripod_roll = -0.0872664
+tripod_pitch = 1.33
+tripod_yaw = -1.832595714594
 
-#tripod_x = -0.1
-# tripod_y = 1.5  
-# tripod_z = 3.5
+# tripod_x = -0.1
+# tripod_y = 1.3  
+# tripod_z = 2.7
 # tripod_roll = 0.0
 # tripod_pitch = 1.3
 # tripod_yaw = -1.570796

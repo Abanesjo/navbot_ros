@@ -25,16 +25,19 @@ Panels:
         - /Odometry1/Covariance1/Position1
         - /Odometry1/Covariance1/Orientation1
         - /Filtered Path1
-        - /Ground Truth1
         - /Wheel Path1
         - /Camera Path1
+        - /Ground Truth1
       Splitter Ratio: 0.5
-    Tree Height: 363
+    Tree Height: 648
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
     Expanded:
+      - /Interact1
+      - /Measure1
       - /2D Pose Estimate1
+      - /2D Pose Estimate1/Topic1
       - /2D Goal Pose1
       - /Publish Point1
     Name: Tool Properties
@@ -328,34 +331,6 @@ Visualization Manager:
     - Alpha: 1
       Buffer Length: 1
       Class: rviz_default_plugins/Path
-      Color: 145; 65; 172
-      Enabled: true
-      Head Diameter: 0.30000001192092896
-      Head Length: 0.20000000298023224
-      Length: 0.30000001192092896
-      Line Style: Lines
-      Line Width: 0.029999999329447746
-      Name: Ground Truth
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0
-      Pose Color: 255; 85; 255
-      Pose Style: None
-      Radius: 1
-      Shaft Diameter: 0.10000000149011612
-      Shaft Length: 0.10000000149011612
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /path/ground_truth
-      Value: true
-    - Alpha: 1
-      Buffer Length: 1
-      Class: rviz_default_plugins/Path
       Color: 28; 113; 216
       Enabled: true
       Head Diameter: 0.30000001192092896
@@ -409,6 +384,27 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /path/camera
       Value: true
+    - Alpha: 1
+      Arrow Length: 0.30000001192092896
+      Axes Length: 0.30000001192092896
+      Axes Radius: 0.009999999776482582
+      Class: rviz_default_plugins/PoseArray
+      Color: 129; 61; 156
+      Enabled: true
+      Head Length: 0.07000000029802322
+      Head Radius: 0.10000000149011612
+      Name: Ground Truth
+      Shaft Length: 0.10000000149011612
+      Shaft Radius: 0.05000000074505806
+      Shape: Arrow (3D)
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /path/ground_truth
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -455,25 +451,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/XYOrbit
-      Distance: 4.68647575378418
+      Distance: 2.5622904300689697
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -1.9946703910827637
-        Y: 0.7840165495872498
+        X: 0.48698562383651733
+        Y: 0.3611319363117218
         Z: -1.7881393432617188e-07
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.03979559615254402
+      Pitch: 1.3747965097427368
       Target Frame: <Fixed Frame>
       Value: XYOrbit (rviz_default_plugins)
-      Yaw: 3.132389545440674
+      Yaw: 1.6573879718780518
     Saved: ~
 Window Geometry:
   Camera:
