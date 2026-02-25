@@ -124,6 +124,25 @@ class RobotRosNode(Node):
 
         self.tf_broadcaster.sendTransform(transform)
 
+    def publish_marker_true_tf(self, tvec: np.ndarray, rvec: np.ndarray, stamp=None) -> None:
+        tvec = np.asarray(tvec, dtype=float).reshape(3)
+        rvec = np.asarray(rvec, dtype=float).reshape(3)
+        qx, qy, qz, qw = Rotation.from_rotvec(rvec).as_quat(canonical=False)
+
+        transform = TransformStamped()
+        transform.header.stamp = stamp if stamp is not None else self.get_clock().now().to_msg()
+        transform.header.frame_id = "camera_frame"
+        transform.child_frame_id = "aruco_frame_true"
+        transform.transform.translation.x = float(tvec[0])
+        transform.transform.translation.y = float(tvec[1])
+        transform.transform.translation.z = float(tvec[2])
+        transform.transform.rotation.x = float(qx)
+        transform.transform.rotation.y = float(qy)
+        transform.transform.rotation.z = float(qz)
+        transform.transform.rotation.w = float(qw)
+
+        self.tf_broadcaster.sendTransform(transform)
+
     def publish_static_transforms(self) -> None:
         stamp = self.get_clock().now().to_msg()
 
@@ -406,6 +425,7 @@ def main() -> None:
                 ros_node.publish_image(vis)
                 if markers:
                     _, tvec, rvec = markers[0]
+                    ros_node.publish_marker_true_tf(tvec, rvec)
                     planar_pose = robot.extended_kalman_filter.camera_pose_to_odom_planar(
                         tvec, rvec
                     )
