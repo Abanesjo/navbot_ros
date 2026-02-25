@@ -48,6 +48,11 @@ Q6 = np.diag([0.1, 0.1, 0.1, 0.06853, 0.06853, 0.06853])
 Q3 = np.diag([0.1, 0.1, 0.06853])
 marker_height = 0.135
 
+#other variances
+roll_var = 0.001
+pitch_var = 0.001
+z_var = 0.01
+
 #Camera Extrinsics
 #Odom to Tripod Mount: 
 tripod_x = -0.8
