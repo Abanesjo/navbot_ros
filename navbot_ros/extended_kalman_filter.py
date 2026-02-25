@@ -80,6 +80,11 @@ class ExtendedKalmanFilter:
             parameters.camera_roll, parameters.camera_pitch, parameters.camera_yaw
         )
         R_odom_cam = R_odom_tripod @ R_tripod_cam
+        self.R_odom_cam = R_odom_cam
+        self.t_odom_cam = np.array([self.T_x, self.T_y, self.T_z], dtype=float)
+        self.T_odom_camera = np.eye(4)
+        self.T_odom_camera[0:3, 0:3] = self.R_odom_cam
+        self.T_odom_camera[0:3, 3] = self.t_odom_cam
         self.T_alpha, self.T_beta, self.T_theta = R_to_rpy(R_odom_cam)
         self.c_Talpha = math.cos(self.T_alpha)
         self.s_Talpha = math.sin(self.T_alpha)
@@ -184,114 +189,26 @@ class ExtendedKalmanFilter:
 
     # -------------------------------Correction--------------------------------------#
 
-    # The nonlinear measurement function
+    def camera_pose_to_odom_planar(self, tvec, rvec):
+        R_camera_marker, _ = cv2.Rodrigues(np.asarray(rvec, dtype=float).reshape(3, 1))
+        T_camera_marker = np.eye(4)
+        T_camera_marker[0:3, 0:3] = R_camera_marker
+        T_camera_marker[0:3, 3] = np.asarray(tvec, dtype=float).reshape(3)
+        T_odom_marker = self.T_odom_camera @ T_camera_marker
+        R_odom_marker = T_odom_marker[0:3, 0:3]
+        x = T_odom_marker[0, 3]
+        y = T_odom_marker[1, 3]
+        theta = wrap_pi(math.atan2(R_odom_marker[1, 0], R_odom_marker[0, 0]))
+        return np.array([x, y, theta])
+
     def get_h_function(self, x_t):
-        x_x, x_y, x_theta = x_t
-        c_x = math.cos(x_theta)
-        s_x = math.sin(x_theta)
-        c_Ttheta_minus_x = math.cos(self.T_theta - x_theta)
+        return np.array([x_t[0], x_t[1], wrap_pi(x_t[2])])
 
-        z_x = (
-            self.T_z * self.s_Tbeta
-            - self.x_z * self.s_Tbeta
-            - self.T_x * self.c_Tbeta * self.c_Ttheta
-            - self.T_y * self.c_Tbeta * self.s_Ttheta
-            + x_x * self.c_Tbeta * self.c_Ttheta
-            + x_y * self.c_Tbeta * self.s_Ttheta
-        )
-        z_y = (
-            self.T_x * self.kappa_3
-            - self.T_y * self.kappa_4
-            - x_x * self.kappa_3
-            + x_y * self.kappa_4
-            - self.T_z * self.c_Tbeta * self.s_Talpha
-            + self.x_z * self.c_Tbeta * self.s_Talpha
-        )
-        z_z = (
-            self.T_y * self.kappa_1
-            - self.T_x * self.kappa_2
-            + x_x * self.kappa_2
-            - x_y * self.kappa_1
-            - self.T_z * self.c_Talpha * self.c_Tbeta
-            + self.x_z * self.c_Talpha * self.c_Tbeta
-        )
-        z_alpha = math.atan2(
-            -c_x * self.kappa_1 - s_x * self.kappa_2, self.c_Talpha * self.c_Tbeta
-        )
-        z_beta = math.atan2(
-            s_x * self.kappa_1 - c_x * self.kappa_2,
-            math.sqrt(
-                (c_x * self.kappa_3 - s_x * self.kappa_4) ** 2
-                + (self.c_Tbeta**2) * (c_Ttheta_minus_x**2)
-            ),
-        )
-        z_theta = math.atan2(
-            s_x * self.kappa_4 - c_x * self.kappa_3,
-            self.c_Tbeta * (self.c_Ttheta * c_x + self.s_Ttheta * s_x),
-        )
-
-        return np.array([z_x, z_y, z_z, z_alpha, z_beta, z_theta])
-
-    # This function returns the Q_t matrix which contains measurement covariance terms.
     def get_Q(self):
-        return parameters.Q6
+        return parameters.Q3
 
-    # This function returns a matrix with the partial derivatives dh_t/dx_t
     def get_H(self, x_t):
-        _, _, x_theta = x_t
-        c_x = math.cos(x_theta)
-        s_x = math.sin(x_theta)
-        c_Ttheta_minus_x = math.cos(self.T_theta - x_theta)
-        s_Ttheta_minus_x = math.sin(self.T_theta - x_theta)
-
-        d_alpha = self.c_Talpha * self.c_Tbeta
-        n_beta = s_x * self.kappa_1 - c_x * self.kappa_2
-        d_beta = math.sqrt(
-            (c_x * self.kappa_3 - s_x * self.kappa_4) ** 2
-            + (self.c_Tbeta**2) * (c_Ttheta_minus_x**2)
-        )
-        eta_alpha = -(d_alpha * (c_x * self.kappa_2 - s_x * self.kappa_1)) / (
-            (c_x * self.kappa_1 + s_x * self.kappa_2) ** 2 + d_alpha * d_alpha
-        )
-
-        dn_beta = c_x * self.kappa_1 + s_x * self.kappa_2
-        dd_beta = (
-            (c_x * self.kappa_3 - s_x * self.kappa_4)
-            * (-s_x * self.kappa_3 - c_x * self.kappa_4)
-            + (self.c_Tbeta**2) * c_Ttheta_minus_x * s_Ttheta_minus_x
-        ) / d_beta
-        eta_beta = (d_beta * dn_beta - n_beta * dd_beta) / (
-            n_beta * n_beta + d_beta * d_beta
-        )
-
-        eta_theta = (self.c_Talpha * self.c_Tbeta) / (
-            (c_x * self.kappa_3 - s_x * self.kappa_4) ** 2
-            + (self.c_Tbeta**2) * (c_Ttheta_minus_x**2)
-        )
-
-        H = np.array(
-            [
-                [self.c_Tbeta * self.c_Ttheta, self.c_Tbeta * self.s_Ttheta, 0.0],
-                [
-                    self.c_Ttheta * self.s_Talpha * self.s_Tbeta
-                    - self.c_Talpha * self.s_Ttheta,
-                    self.c_Talpha * self.c_Ttheta
-                    + self.s_Talpha * self.s_Tbeta * self.s_Ttheta,
-                    0.0,
-                ],
-                [
-                    self.s_Talpha * self.s_Ttheta
-                    + self.c_Talpha * self.c_Ttheta * self.s_Tbeta,
-                    self.c_Talpha * self.s_Tbeta * self.s_Ttheta
-                    - self.c_Ttheta * self.s_Talpha,
-                    0.0,
-                ],
-                [0.0, 0.0, eta_alpha],
-                [0.0, 0.0, eta_beta],
-                [0.0, 0.0, eta_theta],
-            ]
-        )
-        return H
+        return np.eye(3)
 
     # Set the EKF's corrected state mean and covariance matrix
     def correction_step(self, z_t):
@@ -313,9 +230,7 @@ class ExtendedKalmanFilter:
                 return self.state_mean, self.state_covariance
 
         residual = z_t - z_hat
-        residual[3] = wrap_pi(residual[3])
-        residual[4] = wrap_pi(residual[4])
-        residual[5] = wrap_pi(residual[5])
+        residual[2] = wrap_pi(residual[2])
         self.state_mean = x_t_pred + K @ residual
         self.state_covariance = (np.eye(3) - K @ H) @ sigma_t_pred
         return self.state_mean, self.state_covariance
@@ -470,8 +385,9 @@ def offline_efk():
         phi = motion_model.get_steering_angle(row[2].steering)
 
         u_t = np.array([v, phi])
-        roll, pitch, yaw = rvec_to_rpy(row[3][3:6])
-        z_t = np.array([row[3][0], row[3][1], row[3][2], roll, pitch, yaw])
+        z_t = extended_kalman_filter.camera_pose_to_odom_planar(
+            row[3][0:3], row[3][3:6]
+        )
 
         last_encoder_count = row[2].encoder_counts
 

@@ -2,12 +2,10 @@
 import serial
 import time
 import pickle
-import cv2
 import cv2.aruco as aruco
 import numpy as np
 import matplotlib.pyplot as plt
 import socket
-import math
 from time import strftime
 
 # Local libraries
@@ -79,20 +77,9 @@ class Robot:
 
         z_t = None
         if self.camera_signal_new:
-            [z_x, z_y, z_z] = self.camera_sensor_signal[0:3]
-            rvec = np.array(self.camera_sensor_signal[3:6], dtype=float).reshape(3, 1)
-            R, _ = cv2.Rodrigues(rvec)
-            sy = math.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
-            singular = sy < 1e-6
-            if not singular:
-                roll = math.atan2(R[2, 1], R[2, 2])
-                pitch = math.atan2(-R[2, 0], sy)
-                yaw = math.atan2(R[1, 0], R[0, 0])
-            else:
-                roll = math.atan2(-R[1, 2], R[1, 1])
-                pitch = math.atan2(-R[2, 0], sy)
-                yaw = 0.0
-            z_t = np.array([z_x, z_y, z_z, roll, pitch, yaw])
+            tvec = self.camera_sensor_signal[0:3]
+            rvec = self.camera_sensor_signal[3:6]
+            z_t = self.extended_kalman_filter.camera_pose_to_odom_planar(tvec, rvec)
 
         self.last_encoder_count = self.robot_sensor_signal.encoder_counts
 

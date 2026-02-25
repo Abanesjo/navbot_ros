@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<launch>
+    <arg name="rviz" default="false"/>
+    <arg name="rviz_config" default="$(find-pkg-share navbot_ros)/config/navbot.rviz"/>
+
+    <node name="bringup" pkg="navbot_ros" exec="robot_ros_node.py"/>
+
+    <node name="guides" pkg="navbot_ros" exec="publish_guides.py"/>
+
+    <group if="$(var rviz)">
+        <node name="rviz" pkg="rviz2" exec="rviz2" args="-d $(var rviz_config)"/>
+    </group>
+
+    <!-- <include file="$(find-pkg-share foxglove_bridge)/launch/foxglove_bridge_launch.xml"/>  -->
+</launch>

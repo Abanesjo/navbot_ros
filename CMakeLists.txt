@@ -20,6 +20,7 @@ install(PROGRAMS
   scripts/test.py
   scripts/robot_ros_node.py
   scripts/controller_test.py
+  scripts/publish_guides.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

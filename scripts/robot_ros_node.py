@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
 """Headless robot control with ROS odometry publishing."""
 
-import contextlib
-import select
-import sys
-import termios
 import time
-import tty
 
 import cv2
 import cv2.aruco as aruco
@@ -33,28 +28,7 @@ SPEED_AXIS = 1
 SPEED_AXIS_SIGN = -1.0
 STEER_SCALE = 20
 MAX_SPEED = 100
-LOG_TOGGLE_KEY = "k"
-
-
-class KeyPoller:
-    """Non-blocking single-key reader for terminal input."""
-
-    def __enter__(self):
-        if not sys.stdin.isatty():
-            raise RuntimeError("Keyboard toggle requires a terminal (TTY) input.")
-        self.fd = sys.stdin.fileno()
-        self.old_settings = termios.tcgetattr(self.fd)
-        tty.setcbreak(self.fd)
-        return self
-
-    def poll(self):
-        ready, _, _ = select.select([sys.stdin], [], [], 0)
-        if ready:
-            return sys.stdin.read(1)
-        return None
-
-    def __exit__(self, exc_type, exc, tb):
-        termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old_settings)
+LOG_TOGGLE_BUTTON = 3
 
 
 def clamp(value, low, high):
@@ -129,18 +103,24 @@ class RobotRosNode(Node):
         self.detector = aruco.ArucoDetector(dictionary, detector_params)
         self.publish_static_transforms()
 
-    def publish_marker_tf(self, tvec: np.ndarray, quat) -> None:
+    def publish_marker_tf(self, planar_pose: np.ndarray) -> None:
+        x = float(planar_pose[0])
+        y = float(planar_pose[1])
+        yaw = float(planar_pose[2])
+        qx, qy, qz, qw = Rotation.from_euler("xyz", [0.0, 0.0, yaw]).as_quat(
+            canonical=False
+        )
         transform = TransformStamped()
         transform.header.stamp = self.get_clock().now().to_msg()
-        transform.header.frame_id = "camera_frame"
+        transform.header.frame_id = "odom"
         transform.child_frame_id = "aruco_frame"
-        transform.transform.translation.x = float(tvec[0])
-        transform.transform.translation.y = float(tvec[1])
-        transform.transform.translation.z = float(tvec[2])
-        transform.transform.rotation.x = float(quat[0])
-        transform.transform.rotation.y = float(quat[1])
-        transform.transform.rotation.z = float(quat[2])
-        transform.transform.rotation.w = float(quat[3])
+        transform.transform.translation.x = x
+        transform.transform.translation.y = y
+        transform.transform.translation.z = float(parameters.marker_height)
+        transform.transform.rotation.x = float(qx)
+        transform.transform.rotation.y = float(qy)
+        transform.transform.rotation.z = float(qz)
+        transform.transform.rotation.w = float(qw)
 
         self.tf_broadcaster.sendTransform(transform)
 
@@ -181,28 +161,30 @@ class RobotRosNode(Node):
 
         self.static_tf_broadcaster.sendTransform([odom_to_tripod, tripod_to_camera])
 
-    def publish_camera_odom(self, tvec: np.ndarray, rvec: np.ndarray) -> None:
-        rotation_matrix, _ = cv2.Rodrigues(rvec)
-        quat = Rotation.from_matrix(rotation_matrix).as_quat(canonical=False)
-        qx, qy, qz, qw = quat
+    def publish_camera_odom(self, planar_pose: np.ndarray) -> None:
+        x = float(planar_pose[0])
+        y = float(planar_pose[1])
+        yaw = float(planar_pose[2])
+        qx, qy, qz, qw = Rotation.from_euler("xyz", [0.0, 0.0, yaw]).as_quat(
+            canonical=False
+        )
 
         odom = Odometry()
         odom.header.stamp = self.get_clock().now().to_msg()
-        odom.header.frame_id = "camera_frame"
+        odom.header.frame_id = "odom"
         odom.child_frame_id = "aruco_frame"
-        odom.pose.pose.position.x = float(tvec[0])
-        odom.pose.pose.position.y = float(tvec[1])
-        odom.pose.pose.position.z = float(tvec[2])
+        odom.pose.pose.position.x = x
+        odom.pose.pose.position.y = y
+        odom.pose.pose.position.z = float(parameters.marker_height)
         odom.pose.pose.orientation.x = float(qx)
         odom.pose.pose.orientation.y = float(qy)
         odom.pose.pose.orientation.z = float(qz)
         odom.pose.pose.orientation.w = float(qw)
-        odom.pose.covariance = (
-            np.asarray(parameters.Q6, dtype=float).reshape((6, 6)).flatten().tolist()
-        )
+        cov = self.build_pose_covariance(parameters.Q3, 0.01, 0.01, 0.01)
+        odom.pose.covariance = cov.flatten().tolist()
 
         self.camera_odom_pub.publish(odom)
-        self.publish_marker_tf(tvec, quat)
+        self.publish_marker_tf(planar_pose)
 
     #This is necessary since most covariances are only for 3dof. We need 6dof for visualization. This also ensures that the matrix is still positive semidefinite. (This is purely for visualization purposes in RViz)
     def build_pose_covariance(
@@ -345,79 +327,79 @@ def main() -> None:
     wheel_initialized = False
 
     logging_active = False
+    log_toggle_button_prev = False
     last_loop_time = time.perf_counter()
 
     try:
-        with KeyPoller() as key_poller:
-            while rclpy.ok():
-                loop_start = time.perf_counter()
+        while rclpy.ok():
+            loop_start = time.perf_counter()
 
-                pygame.event.pump()
+            pygame.event.pump()
 
-                steer_axis = clamp(joystick.get_axis(STEER_AXIS), -1.0, 1.0)
-                cmd_steering = int(round(steer_axis * STEER_SCALE))
+            steer_axis = clamp(joystick.get_axis(STEER_AXIS), -1.0, 1.0)
+            cmd_steering = int(round(steer_axis * STEER_SCALE))
 
-                speed_axis = clamp(
-                    SPEED_AXIS_SIGN * joystick.get_axis(SPEED_AXIS), 0.0, 1.0
-                )
-                cmd_speed = int(round(speed_axis * MAX_SPEED))
+            speed_axis = clamp(
+                SPEED_AXIS_SIGN * joystick.get_axis(SPEED_AXIS), 0.0, 1.0
+            )
+            cmd_speed = int(round(speed_axis * MAX_SPEED))
 
-                key = key_poller.poll()
-                while key is not None:
-                    if key == "\x03":
-                        raise KeyboardInterrupt
-                    if key.lower() == LOG_TOGGLE_KEY:
-                        logging_active = not logging_active
-                        if logging_active:
-                            print("Recording started", flush=True)
-                        else:
-                            print("Recording stopped", flush=True)
-                    key = key_poller.poll()
-
-                robot.control_loop(cmd_speed, cmd_steering, logging_active)
-
-                encoder_counts = robot.robot_sensor_signal.encoder_counts
-                now = time.perf_counter()
-                if not wheel_initialized:
-                    wheel_last_encoder_count = encoder_counts
-                    last_loop_time = now
-                    wheel_initialized = True
+            log_toggle_button_pressed = bool(joystick.get_button(LOG_TOGGLE_BUTTON))
+            if log_toggle_button_pressed and not log_toggle_button_prev:
+                logging_active = not logging_active
+                if logging_active:
+                    print("Recording started", flush=True)
                 else:
-                    delta_t = now - last_loop_time
-                    last_loop_time = now
-                    if delta_t <= 0.0:
-                        delta_t = CONTROL_PERIOD_S
+                    print("Recording stopped", flush=True)
+            log_toggle_button_prev = log_toggle_button_pressed
 
-                    delta_counts = encoder_counts - wheel_last_encoder_count
-                    wheel_last_encoder_count = encoder_counts
-                    v = wheel_ekf.motion_model.get_linear_velocity(
-                        delta_counts, delta_t
-                    )
-                    phi = wheel_ekf.motion_model.get_steering_angle(
-                        robot.robot_sensor_signal.steering
-                    )
-                    wheel_ekf.update([v, phi], None, delta_t)
+            robot.control_loop(cmd_speed, cmd_steering, logging_active)
 
-                ros_node.publish_filtered_odom(
-                    robot.extended_kalman_filter.state_mean,
-                    robot.extended_kalman_filter.state_covariance,
+            encoder_counts = robot.robot_sensor_signal.encoder_counts
+            now = time.perf_counter()
+            if not wheel_initialized:
+                wheel_last_encoder_count = encoder_counts
+                last_loop_time = now
+                wheel_initialized = True
+            else:
+                delta_t = now - last_loop_time
+                last_loop_time = now
+                if delta_t <= 0.0:
+                    delta_t = CONTROL_PERIOD_S
+
+                delta_counts = encoder_counts - wheel_last_encoder_count
+                wheel_last_encoder_count = encoder_counts
+                v = wheel_ekf.motion_model.get_linear_velocity(
+                    delta_counts, delta_t
                 )
-                ros_node.publish_wheel_odom(
-                    wheel_ekf.state_mean,
-                    wheel_ekf.state_covariance,
+                phi = wheel_ekf.motion_model.get_steering_angle(
+                    robot.robot_sensor_signal.steering
                 )
-                frame = getattr(robot.camera_sensor, "last_frame", None)
-                if frame is not None:
-                    vis, markers = ros_node.process_frame(frame)
-                    ros_node.publish_image(vis)
-                    if markers:
-                        _, tvec, rvec = markers[0]
-                        ros_node.publish_camera_odom(tvec, rvec)
-                rclpy.spin_once(ros_node, timeout_sec=0.0)
+                wheel_ekf.update([v, phi], None, delta_t)
 
-                elapsed = time.perf_counter() - loop_start
-                if elapsed < CONTROL_PERIOD_S:
-                    time.sleep(CONTROL_PERIOD_S - elapsed)
+            ros_node.publish_filtered_odom(
+                robot.extended_kalman_filter.state_mean,
+                robot.extended_kalman_filter.state_covariance,
+            )
+            ros_node.publish_wheel_odom(
+                wheel_ekf.state_mean,
+                wheel_ekf.state_covariance,
+            )
+            frame = getattr(robot.camera_sensor, "last_frame", None)
+            if frame is not None:
+                vis, markers = ros_node.process_frame(frame)
+                ros_node.publish_image(vis)
+                if markers:
+                    _, tvec, rvec = markers[0]
+                    planar_pose = robot.extended_kalman_filter.camera_pose_to_odom_planar(
+                        tvec, rvec
+                    )
+                    ros_node.publish_camera_odom(planar_pose)
+            rclpy.spin_once(ros_node, timeout_sec=0.0)
+
+            elapsed = time.perf_counter() - loop_start
+            if elapsed < CONTROL_PERIOD_S:
+                time.sleep(CONTROL_PERIOD_S - elapsed)
 
     except KeyboardInterrupt:
         pass
