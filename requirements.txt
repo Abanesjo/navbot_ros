@@ -11,3 +11,7 @@ opencv-contrib-python==4.11.0.86
 matplotlib
 pygame
 pyserial
+<<<<<<< HEAD
+=======
+
+>>>>>>> refs/remotes/origin/main
