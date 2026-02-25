@@ -11,5 +11,5 @@
         <node name="rviz" pkg="rviz2" exec="rviz2" args="-d $(var rviz_config)"/>
     </group>
 
-    <!-- <include file="$(find-pkg-share foxglove_bridge)/launch/foxglove_bridge_launch.xml"/>  -->
+    <include file="$(find-pkg-share foxglove_bridge)/launch/foxglove_bridge_launch.xml"/> 
 </launch>
