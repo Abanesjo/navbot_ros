@@ -6,6 +6,7 @@
     <node name="bringup" pkg="navbot_ros" exec="robot_ros_node.py"/>
 
     <node name="guides" pkg="navbot_ros" exec="publish_guides.py"/>
+    <node name="path_publisher" pkg="navbot_ros" exec="path_publisher.py"/>
 
     <group if="$(var rviz)">
         <node name="rviz" pkg="rviz2" exec="rviz2" args="-d $(var rviz_config)"/>
@@ -15,4 +16,7 @@
 
     <!-- Logging -->
     <node name="logger" pkg="navbot_ros" exec="logger.py"/>
+
+    <!-- Path Publisher -->
+    <node name="path_publisher" pkg="navbot_ros" exec="path_publisher.py"/>
 </launch>

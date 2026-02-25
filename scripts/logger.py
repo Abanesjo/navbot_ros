@@ -9,6 +9,7 @@ from functools import partial
 from typing import Dict, Optional
 
 import rclpy
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 
@@ -47,6 +48,7 @@ class OdometryLogger(Node):
         self._csv_file.flush()
 
         self._latest_msgs: Dict[str, Optional[Odometry]] = {name: None for name in TOPICS}
+        self._pending_ground_truth_msg: Optional[PoseWithCovarianceStamped] = None
         self._start_time = None
         self._announced_waiting = False
 
@@ -59,6 +61,13 @@ class OdometryLogger(Node):
                 10,
             )
             self._subscriptions.append(sub)
+
+        self._ground_truth_subscription = self.create_subscription(
+            PoseWithCovarianceStamped,
+            "/ground_truth",
+            self._ground_truth_callback,
+            10,
+        )
 
         self._timer = self.create_timer(LOG_PERIOD_S, self._on_timer)
         self.get_logger().info(f"Logging odometry to CSV: {self._csv_path}")
@@ -77,6 +86,13 @@ class OdometryLogger(Node):
                     f"{prefix}_xy_cov",
                 ]
             )
+        fields.extend(
+            [
+                "ground_truth_x",
+                "ground_truth_y",
+                "ground_truth_yaw",
+            ]
+        )
         return fields
 
     def _odom_callback(self, source: str, msg: Odometry) -> None:
@@ -84,6 +100,9 @@ class OdometryLogger(Node):
         if all(self._latest_msgs.values()) and self._announced_waiting:
             self.get_logger().info("Received all odometry topics. Starting CSV writes at 10 Hz.")
             self._announced_waiting = False
+
+    def _ground_truth_callback(self, msg: PoseWithCovarianceStamped) -> None:
+        self._pending_ground_truth_msg = msg
 
     def _on_timer(self) -> None:
         if not all(self._latest_msgs.values()):
@@ -103,6 +122,12 @@ class OdometryLogger(Node):
         row = {"time_from_start_s": elapsed_s}
         for prefix, msg in self._latest_msgs.items():
             row.update(self._extract_row_fields(prefix, msg))
+
+        if self._pending_ground_truth_msg is None:
+            row.update(self._empty_ground_truth_row_fields())
+        else:
+            row.update(self._extract_ground_truth_row_fields(self._pending_ground_truth_msg))
+            self._pending_ground_truth_msg = None
 
         self._writer.writerow(row)
         self._csv_file.flush()
@@ -126,6 +151,27 @@ class OdometryLogger(Node):
             f"{prefix}_y_var": float(cov[7]),
             f"{prefix}_yaw_var": float(cov[35]),
             f"{prefix}_xy_cov": float(xy_cov),
+        }
+
+    def _extract_ground_truth_row_fields(self, msg: PoseWithCovarianceStamped):
+        pose = msg.pose.pose
+        yaw = quaternion_to_yaw(
+            pose.orientation.x,
+            pose.orientation.y,
+            pose.orientation.z,
+            pose.orientation.w,
+        )
+        return {
+            "ground_truth_x": float(pose.position.x),
+            "ground_truth_y": float(pose.position.y),
+            "ground_truth_yaw": float(yaw),
+        }
+
+    def _empty_ground_truth_row_fields(self):
+        return {
+            "ground_truth_x": "",
+            "ground_truth_y": "",
+            "ground_truth_yaw": "",
         }
 
     def destroy_node(self) -> bool:

@@ -23,6 +23,7 @@ install(PROGRAMS
   scripts/publish_guides.py
   scripts/logger.py
   scripts/plot_odometry.py
+  scripts/path_publisher.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

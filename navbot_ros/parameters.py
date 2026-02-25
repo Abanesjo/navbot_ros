@@ -45,7 +45,7 @@ I3 = np.array([[0.01, 0, 0],[0, 0.01, 0], [0, 0, 0.06853]])
 covariance_plot_scale = 100
 
 Q6 = np.diag([0.1, 0.1, 0.1, 0.06853, 0.06853, 0.06853])
-Q3 = np.diag([0.1, 0.1, 0.06853])
+Q3 = np.diag([0.0225, 0.0225, 0.06853])
 marker_height = 0.135
 
 #other variances
@@ -55,12 +55,12 @@ z_var = 0.01
 
 #Camera Extrinsics
 #Odom to Tripod Mount: 
-tripod_x = -0.8
-tripod_y = -0.08  
+tripod_x = -0.1
+tripod_y = 1.3  
 tripod_z = 2.7
 tripod_roll = 0.0
 tripod_pitch = 1.35
-tripod_yaw = 0.0
+tripod_yaw = -1.570796
 
 #Tripod Mount to Camera Frame (this just rotates x-y-z orientation to the camera's OpenCV Image coordinates)
 camera_roll = -1.5708

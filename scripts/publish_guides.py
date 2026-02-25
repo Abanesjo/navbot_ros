@@ -19,14 +19,23 @@ class GuidePublisher(Node):
 
     def _build_markers(self) -> MarkerArray:
         markers = MarkerArray()
-        x_count = int(round(self.max_x / self.spacing))
-        y_count = int(round(self.max_y / self.spacing))
+        # Physical guide field dimensions (matches existing 0.9 m x 1.8 m grid),
+        # remapped into image-like odom axes:
+        #   origin: right-edge midpoint
+        #   +x: left across the long edge
+        #   +y: down across the short edge
+        field_width_x = self.max_y   # 1.8 m (horizontal in the image)
+        field_height_y = self.max_x  # 0.9 m (vertical in the image)
+
+        x_count = int(round(field_width_x / self.spacing))
+        y_count = int(round(field_height_y / self.spacing))
         marker_id = 0
 
         for ix in range(x_count + 1):
             x = ix * self.spacing
             for iy in range(y_count + 1):
-                y = iy * self.spacing
+                # Shift vertical coordinates so y=0 lies at the midpoint of the right edge.
+                y = (iy * self.spacing) - (0.5 * field_height_y)
                 marker = Marker()
                 marker.header.frame_id = "odom"
                 marker.ns = "guide"
