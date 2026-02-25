@@ -180,7 +180,12 @@ class RobotRosNode(Node):
         odom.pose.pose.orientation.y = float(qy)
         odom.pose.pose.orientation.z = float(qz)
         odom.pose.pose.orientation.w = float(qw)
-        cov = self.build_pose_covariance(parameters.Q3, 0.01, 0.01, 0.01)
+        cov = self.build_pose_covariance(
+            parameters.Q3,
+            parameters.z_var,
+            parameters.roll_var,
+            parameters.pitch_var,
+        )
         odom.pose.covariance = cov.flatten().tolist()
 
         self.camera_odom_pub.publish(odom)
@@ -238,7 +243,12 @@ class RobotRosNode(Node):
         odom.pose.pose.orientation.z = float(qz)
         odom.pose.pose.orientation.w = float(qw)
 
-        cov = self.build_pose_covariance(state_covariance, 0.05, 0.01, 0.01)
+        cov = self.build_pose_covariance(
+            state_covariance,
+            parameters.z_var,
+            parameters.roll_var,
+            parameters.pitch_var,
+        )
         odom.pose.covariance = cov.flatten().tolist()
 
         self.filtered_odom_pub.publish(odom)
@@ -266,7 +276,12 @@ class RobotRosNode(Node):
         odom.pose.pose.orientation.z = float(qz)
         odom.pose.pose.orientation.w = float(qw)
 
-        cov = self.build_pose_covariance(state_covariance, 0.01, 0.001, 0.001)
+        cov = self.build_pose_covariance(
+            state_covariance,
+            parameters.z_var,
+            parameters.roll_var,
+            parameters.pitch_var,
+        )
         odom.pose.covariance = cov.flatten().tolist()
 
         self.wheel_odom_pub.publish(odom)
