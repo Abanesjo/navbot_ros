@@ -59,7 +59,7 @@ tripod_x = -0.1
 tripod_y = 1.3  
 tripod_z = 2.7
 tripod_roll = 0.0
-tripod_pitch = 1.35
+tripod_pitch = 1.3
 tripod_yaw = -1.570796
 
 #Tripod Mount to Camera Frame (this just rotates x-y-z orientation to the camera's OpenCV Image coordinates)
