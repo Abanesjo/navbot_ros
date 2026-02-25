@@ -19,6 +19,7 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   scripts/test.py
   scripts/robot_ros_node.py
+  scripts/controller_test.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

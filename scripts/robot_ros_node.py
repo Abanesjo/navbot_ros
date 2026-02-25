@@ -204,11 +204,14 @@ class RobotRosNode(Node):
         self.camera_odom_pub.publish(odom)
         self.publish_marker_tf(tvec, quat)
 
+    #This is necessary since most covariances are only for 3dof. We need 6dof for visualization. This also ensures that the matrix is still positive semidefinite. (This is purely for visualization purposes in RViz)
     def build_pose_covariance(
         self, state_covariance, z_var: float, roll_var: float, pitch_var: float
     ) -> np.ndarray:
         state_cov = np.asarray(state_covariance, dtype=float).reshape(3, 3)
         state_cov = 0.5 * (state_cov + state_cov.T)
+
+        #This checks for positive semidefiniteness
         try:
             eigvals, eigvecs = np.linalg.eigh(state_cov)
             eigvals = np.maximum(eigvals, 1e-9)
@@ -216,7 +219,8 @@ class RobotRosNode(Node):
         except np.linalg.LinAlgError:
             diag = np.maximum(np.diag(state_cov), 1e-9)
             state_cov = np.diag(diag)
-
+        
+        #This just appends the existing 3-state covariance with variances for other positions. 
         cov = np.zeros((6, 6), dtype=float)
         cov[0:2, 0:2] = state_cov[0:2, 0:2]
         cov[0, 5] = state_cov[0, 2]

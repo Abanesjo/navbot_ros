@@ -45,7 +45,7 @@ I3 = np.array([[0.01, 0, 0],[0, 0.01, 0], [0, 0, 0.06853]])
 covariance_plot_scale = 100
 
 Q6 = np.diag([0.1, 0.1, 0.1, 0.06853, 0.06853, 0.06853])
-
+Q3 = np.diag([0.1, 0.1, 0.06853])
 marker_height = 0.135
 
 #Camera Extrinsics
@@ -61,3 +61,9 @@ tripod_yaw = 0.0
 camera_roll = -1.5708
 camera_pitch = 0
 camera_yaw = -1.5708
+
+
+#Camera Variances (custom 3-dof measurement)
+Q_x = 0.5
+Q_y = 0.5
+Q_theta = 0.5
