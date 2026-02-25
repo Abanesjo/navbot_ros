@@ -107,7 +107,7 @@ Visualization Manager:
         aruco_frame:
           Value: true
         aruco_frame_true:
-          Value: true
+          Value: false
         camera_frame:
           Value: true
         odom:
@@ -199,7 +199,7 @@ Visualization Manager:
           Scale: 1
           Value: true
         Value: true
-      Enabled: true
+      Enabled: false
       Keep: 1
       Name: Filtered Odometry
       Position Tolerance: 0.10000000149011612
@@ -220,7 +220,7 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /odom/filtered
-      Value: true
+      Value: false
     - Angle Tolerance: 0.10000000149011612
       Class: rviz_default_plugins/Odometry
       Covariance:
@@ -451,25 +451,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/XYOrbit
-      Distance: 2.5622904300689697
+      Distance: 5.938083171844482
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 0.48698562383651733
-        Y: 0.3611319363117218
+        X: -0.8874374032020569
+        Y: 1.4822015762329102
         Z: -1.7881393432617188e-07
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.3747965097427368
+      Pitch: 0.05979704484343529
       Target Frame: <Fixed Frame>
       Value: XYOrbit (rviz_default_plugins)
-      Yaw: 1.6573879718780518
+      Yaw: 5.945572376251221
     Saved: ~
 Window Geometry:
   Camera:
