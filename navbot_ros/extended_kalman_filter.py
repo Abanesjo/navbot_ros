@@ -92,18 +92,18 @@ class ExtendedKalmanFilter:
         self.s_Tbeta = math.sin(self.T_beta)
         self.c_Ttheta = math.cos(self.T_theta)
         self.s_Ttheta = math.sin(self.T_theta)
-        self.kappa_1 = (
-            self.c_Ttheta * self.s_Talpha - self.c_Talpha * self.s_Tbeta * self.s_Ttheta
-        )
-        self.kappa_2 = (
-            self.s_Talpha * self.s_Ttheta + self.c_Talpha * self.c_Ttheta * self.s_Tbeta
-        )
-        self.kappa_3 = (
-            self.c_Talpha * self.s_Ttheta - self.c_Ttheta * self.s_Talpha * self.s_Tbeta
-        )
-        self.kappa_4 = (
-            self.c_Talpha * self.c_Ttheta + self.s_Talpha * self.s_Tbeta * self.s_Ttheta
-        )
+        # self.kappa_1 = (
+        #     self.c_Ttheta * self.s_Talpha - self.c_Talpha * self.s_Tbeta * self.s_Ttheta
+        # )
+        # self.kappa_2 = (
+        #     self.s_Talpha * self.s_Ttheta + self.c_Talpha * self.c_Ttheta * self.s_Tbeta
+        # )
+        # self.kappa_3 = (
+        #     self.c_Talpha * self.s_Ttheta - self.c_Ttheta * self.s_Talpha * self.s_Tbeta
+        # )
+        # self.kappa_4 = (
+        #     self.c_Talpha * self.c_Ttheta + self.s_Talpha * self.s_Tbeta * self.s_Ttheta
+        # )
 
     # -------------------------------Prediction--------------------------------------#
 

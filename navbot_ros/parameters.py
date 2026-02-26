@@ -4,7 +4,7 @@ import numpy as np
 
 # UDP parameters
 localIP = "192.168.8.204" # Put your laptop computer's IP here 199
-arduinoIP = "192.168.8.125" # Put your arduino's IP here 200
+arduinoIP = "192.168.8.189" # Put your arduino's IP here 200
 localPort = 4010
 arduinoPort = 4010
 bufferSize = 1024
@@ -44,7 +44,7 @@ extra_trial_log_time = 2000 # milliseconds
 I3 = np.array([[0.01, 0, 0],[0, 0.01, 0], [0, 0, 0.06853]])
 covariance_plot_scale = 100
 
-Q6 = np.diag([0.1, 0.1, 0.1, 0.06853, 0.06853, 0.06853])
+#Q6 = np.diag([0.1, 0.1, 0.1, 0.06853, 0.06853, 0.06853])
 Q3 = np.diag([0.0225, 0.0225, 0.06853])
 marker_height = 0.135
 
