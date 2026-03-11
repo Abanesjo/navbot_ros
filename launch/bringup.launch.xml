@@ -3,7 +3,9 @@
     <arg name="rviz" default="false"/>
     <arg name="rviz_config" default="$(find-pkg-share navbot_ros)/config/navbot.rviz"/>
 
-    <node name="bringup" pkg="navbot_ros" exec="robot_ros_node.py"/>
+    <node name="bringup" pkg="navbot_ros" exec="robot_ros_node.py">
+        <param name="covariance_scaling" value="1.0"/>
+    </node>
 
     <node name="guides" pkg="navbot_ros" exec="publish_guides.py"/>
     <node name="path_publisher" pkg="navbot_ros" exec="path_publisher.py"/>

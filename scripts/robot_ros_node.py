@@ -93,6 +93,7 @@ class RobotRosNode(Node):
         self.filtered_odom_pub = self.create_publisher(Odometry, "/odom/filtered", 10)
         self.wheel_odom_pub = self.create_publisher(Odometry, "/odom/wheel", 10)
         self.image_pub = self.create_publisher(Image, "/camera/image", 10)
+        self.declare_parameter("covariance_scaling", 1.0)
         self.cv_bridge = CvBridge()
         self.marker_length = float(parameters.marker_length)
         self.camera_matrix = np.asarray(parameters.camera_matrix)
@@ -262,8 +263,17 @@ class RobotRosNode(Node):
         odom.pose.pose.orientation.z = float(qz)
         odom.pose.pose.orientation.w = float(qw)
 
+        covariance_scaling = float(self.get_parameter("covariance_scaling").value)
+        filtered_state_covariance = np.asarray(state_covariance, dtype=float).reshape(3, 3)
+        if covariance_scaling != 1.0:
+            # Scale the XY covariance ellipse for visualization while leaving yaw unchanged.
+            xy_scale = np.diag([covariance_scaling, covariance_scaling, 1.0])
+            filtered_state_covariance = (
+                xy_scale @ filtered_state_covariance @ xy_scale
+            )
+
         cov = self.build_pose_covariance(
-            state_covariance,
+            filtered_state_covariance,
             parameters.z_var,
             parameters.roll_var,
             parameters.pitch_var,
