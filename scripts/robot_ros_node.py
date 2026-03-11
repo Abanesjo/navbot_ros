@@ -30,7 +30,7 @@ NUM_BINS = int(360 / LIDAR_ANGLE_RES_DEG)
 ANGLE_INCREMENT_RAD = math.radians(LIDAR_ANGLE_RES_DEG)
 STEER_AXIS = 2
 SPEED_AXIS = 1
-SPEED_AXIS_SIGN = -1.0
+SPEED_AXIS_SIGN = 1.0
 STEER_SCALE = 20
 MAX_SPEED = 100
 LOG_TOGGLE_BUTTON = 3
@@ -394,7 +394,7 @@ def main() -> None:
             axes = ros_node.joy_axes
             buttons = ros_node.joy_buttons
 
-            steer_axis = clamp(axes[STEER_AXIS] if len(axes) > STEER_AXIS else 0.0, -1.0, 1.0)
+            steer_axis = clamp(-(axes[STEER_AXIS] if len(axes) > STEER_AXIS else 0.0), -1.0, 1.0)
             cmd_steering = int(round(steer_axis * STEER_SCALE))
 
             speed_axis = clamp(
