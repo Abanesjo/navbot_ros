@@ -91,16 +91,16 @@ void setup()
   Udp.begin(localPort);
 
   // Bind the RPLIDAR driver to the arduino hardware serial
-  //Serial2.begin(460800);
-  //lidar.begin(Serial2);
-  //delay(1000);
-  //if (lidar.begin(Serial2)) {
-  //  Serial.println("Started Lidar!");
-  //} else {
-  //  Serial.println("Failed Lidar!");
-  //}
-  //pinMode(RPLidarMotorPin, OUTPUT);
-  //reset_lidar_message();
+  Serial2.begin(460800);
+  lidar.begin(Serial2);
+  delay(1000);
+  if (lidar.begin(Serial2)) {
+    Serial.println("Started Lidar!");
+  } else {
+    Serial.println("Failed Lidar!");
+  }
+  pinMode(RPLidarMotorPin, OUTPUT);
+  reset_lidar_message();
 
   // Set up speed control
 	pinMode(RightMotorDirPin1, OUTPUT); 
@@ -220,7 +220,7 @@ SensorSignal get_sensor_signal(float steering_angle) {
   last_sensor_signal.encoder_count = encoder_count;
 
   // Update the lidar scan
-  //lidar_update();
+  lidar_update();
 
   return last_sensor_signal;
 }
@@ -275,8 +275,8 @@ void send_sensor_signal(SensorSignal sensor_signal)
     msg = msg + String(current_num_lidar_rays);
     msg = msg + current_lidar_scan_data;
     reset_lidar_message();
-    Serial.print("Sending msg: ");
-    Serial.println(msg);
+    //Serial.print("Sending msg: ");
+    //Serial.println(msg);
 
     Udp.beginPacket(remoteIP, remotePort);
     int   array_length  = msg.length()+1;
