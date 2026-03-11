@@ -208,7 +208,8 @@ class CameraSensor:
         self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
         self.parameters = aruco.DetectorParameters()
         self.detector = aruco.ArucoDetector(self.aruco_dict, self.parameters)
-        
+        self.last_frame = None
+
     # Get a new pose estimate from a camera image
     def get_signal(self, last_camera_signal):
         camera_signal = last_camera_signal
@@ -223,6 +224,7 @@ class CameraSensor:
         ret, frame = self.cap.read()
         if not ret:
             return False, []
+        self.last_frame = frame
         
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         corners, ids, rejectedImgPoints = self.detector.detectMarkers(gray)
