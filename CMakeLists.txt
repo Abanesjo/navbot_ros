@@ -27,6 +27,7 @@ install(PROGRAMS
   scripts/path_publisher.py
   scripts/lidar_ros_node.py
   scripts/lidar_marker_node.py
+  scripts/odom_tf_publisher.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

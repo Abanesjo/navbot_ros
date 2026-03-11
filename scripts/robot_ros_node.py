@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Headless robot control with ROS odometry publishing."""
 
+import math
 import time
 
 import cv2
@@ -12,7 +13,7 @@ from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from scipy.spatial.transform import Rotation
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, LaserScan
 from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
 from cv_bridge import CvBridge
 
@@ -23,6 +24,11 @@ from navbot_ros.robot import Robot
 
 
 CONTROL_PERIOD_S = 0.1
+RANGE_MIN_M = 0.02
+RANGE_MAX_M = 12.0
+LIDAR_ANGLE_RES_DEG = 2
+NUM_BINS = int(360 / LIDAR_ANGLE_RES_DEG)
+ANGLE_INCREMENT_RAD = math.radians(LIDAR_ANGLE_RES_DEG)
 STEER_AXIS = 2
 SPEED_AXIS = 1
 SPEED_AXIS_SIGN = -1.0
@@ -89,6 +95,8 @@ class RobotRosNode(Node):
         super().__init__("robot_ros_node")
         self.tf_broadcaster = TransformBroadcaster(self)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
+        self.scan_pub = self.create_publisher(LaserScan, "/scan", 10)
+        self.lidar_distance_list = [float('inf')] * NUM_BINS
         self.camera_odom_pub = self.create_publisher(Odometry, "/odom/camera", 10)
         self.filtered_odom_pub = self.create_publisher(Odometry, "/odom/filtered", 10)
         self.wheel_odom_pub = self.create_publisher(Odometry, "/odom/wheel", 10)
@@ -142,6 +150,29 @@ class RobotRosNode(Node):
         transform.transform.rotation.w = float(qw)
 
         self.tf_broadcaster.sendTransform(transform)
+
+    def _update_lidar_bins(self, sensor_signal) -> None:
+        for i in range(sensor_signal.num_lidar_rays):
+            distance_mm = sensor_signal.distances[i]
+            angle = 360 - sensor_signal.angles[i]
+            if distance_mm > 20 and abs(angle) < 360:
+                index = max(0, min(NUM_BINS - 1,
+                    int((angle - LIDAR_ANGLE_RES_DEG / 2) / LIDAR_ANGLE_RES_DEG)))
+                self.lidar_distance_list[index] = distance_mm / 1000.0
+
+    def publish_lidar(self, stamp) -> None:
+        msg = LaserScan()
+        msg.header.stamp = stamp
+        msg.header.frame_id = "laser_frame"
+        msg.angle_min = 0.0
+        msg.angle_max = 2 * math.pi - ANGLE_INCREMENT_RAD
+        msg.angle_increment = ANGLE_INCREMENT_RAD
+        msg.time_increment = 0.0
+        msg.scan_time = CONTROL_PERIOD_S
+        msg.range_min = RANGE_MIN_M
+        msg.range_max = RANGE_MAX_M
+        msg.ranges = list(self.lidar_distance_list)
+        self.scan_pub.publish(msg)
 
     def publish_static_transforms(self) -> None:
         stamp = self.get_clock().now().to_msg()
@@ -388,6 +419,9 @@ def main() -> None:
             log_toggle_button_prev = log_toggle_button_pressed
 
             robot.control_loop(cmd_speed, cmd_steering, logging_active)
+
+            ros_node._update_lidar_bins(robot.robot_sensor_signal)
+            ros_node.publish_lidar(ros_node.get_clock().now().to_msg())
 
             encoder_counts = robot.robot_sensor_signal.encoder_counts
             now = time.perf_counter()
