@@ -17,6 +17,12 @@ cd ~/ros2_ws
 rosdep install --from-path src --ignore-src -r -y
 colcon build --symlink-install && source install/setup.bash
 ```
+
+Also make sure the necessary python packages are installed
+```
+pip install -r requirements.txt
+```
+
 Then modify the following files as per the setup (IP addresses, covariances, etc.)
 - `navbot_ros/parameters.py`
 - `robot_arduino_code/robot_arduino_code.ino`
