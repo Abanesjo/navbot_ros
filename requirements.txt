@@ -7,7 +7,6 @@ scipy==1.13.1
 
 # ArUco is part of OpenCV contrib modules (cv2.aruco).
 opencv-contrib-python==4.11.0.86
-opencv-python==4.9.0.80
 
 matplotlib
 pygame
