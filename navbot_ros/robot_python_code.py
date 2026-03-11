@@ -79,7 +79,7 @@ class DataLogger:
 
         
     # Log one time step of data
-    def log(self, logging_switch_on, time, control_signal, robot_sensor_signal, state_mean, particle_set):
+    def log(self, logging_switch_on, time, control_signal, robot_sensor_signal, camera_sensor_signal, state_mean, particle_set):
         if not logging_switch_on:
             if self.currently_logging:
                 self.currently_logging = False
