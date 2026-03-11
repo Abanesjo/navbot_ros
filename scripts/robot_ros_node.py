@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """Headless robot control with ROS odometry publishing."""
 
+import math
 import time
 
 import cv2
 import cv2.aruco as aruco
 import numpy as np
-import pygame
 import rclpy
 from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from scipy.spatial.transform import Rotation
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, Joy, LaserScan
 from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
 from cv_bridge import CvBridge
 
@@ -23,6 +23,11 @@ from navbot_ros.robot import Robot
 
 
 CONTROL_PERIOD_S = 0.1
+RANGE_MIN_M = 0.02
+RANGE_MAX_M = 12.0
+LIDAR_ANGLE_RES_DEG = 2
+NUM_BINS = int(360 / LIDAR_ANGLE_RES_DEG)
+ANGLE_INCREMENT_RAD = math.radians(LIDAR_ANGLE_RES_DEG)
 STEER_AXIS = 2
 SPEED_AXIS = 1
 SPEED_AXIS_SIGN = -1.0
@@ -33,25 +38,6 @@ LOG_TOGGLE_BUTTON = 3
 
 def clamp(value, low, high):
     return max(low, min(high, value))
-
-
-def connect_controller():
-    pygame.init()
-    pygame.joystick.init()
-
-    if pygame.joystick.get_count() == 0:
-        return None
-
-    joystick = pygame.joystick.Joystick(0)
-    joystick.init()
-    return joystick
-
-
-def disconnect_controller(joystick):
-    if joystick is not None:
-        joystick.quit()
-    pygame.joystick.quit()
-    pygame.quit()
 
 
 def connect_robot():
@@ -89,6 +75,8 @@ class RobotRosNode(Node):
         super().__init__("robot_ros_node")
         self.tf_broadcaster = TransformBroadcaster(self)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
+        self.scan_pub = self.create_publisher(LaserScan, "/scan", 10)
+        self.lidar_distance_list = [float('inf')] * NUM_BINS
         self.camera_odom_pub = self.create_publisher(Odometry, "/odom/camera", 10)
         self.filtered_odom_pub = self.create_publisher(Odometry, "/odom/filtered", 10)
         self.wheel_odom_pub = self.create_publisher(Odometry, "/odom/wheel", 10)
@@ -102,7 +90,14 @@ class RobotRosNode(Node):
         detector_params = aruco.DetectorParameters()
         detector_params.cornerRefinementMethod = aruco.CORNER_REFINE_SUBPIX
         self.detector = aruco.ArucoDetector(dictionary, detector_params)
+        self.joy_axes = []
+        self.joy_buttons = []
+        self.create_subscription(Joy, "/joy", self._joy_callback, 10)
         self.publish_static_transforms()
+
+    def _joy_callback(self, msg: Joy) -> None:
+        self.joy_axes = list(msg.axes)
+        self.joy_buttons = list(msg.buttons)
 
     def publish_marker_tf(self, planar_pose: np.ndarray) -> None:
         x = float(planar_pose[0])
@@ -143,6 +138,29 @@ class RobotRosNode(Node):
         transform.transform.rotation.w = float(qw)
 
         self.tf_broadcaster.sendTransform(transform)
+
+    def _update_lidar_bins(self, sensor_signal) -> None:
+        for i in range(sensor_signal.num_lidar_rays):
+            distance_mm = sensor_signal.distances[i]
+            angle = 360 - sensor_signal.angles[i]
+            if distance_mm > 20 and abs(angle) < 360:
+                index = max(0, min(NUM_BINS - 1,
+                    int((angle - LIDAR_ANGLE_RES_DEG / 2) / LIDAR_ANGLE_RES_DEG)))
+                self.lidar_distance_list[index] = distance_mm / 1000.0
+
+    def publish_lidar(self, stamp) -> None:
+        msg = LaserScan()
+        msg.header.stamp = stamp
+        msg.header.frame_id = "laser_frame"
+        msg.angle_min = 0.0
+        msg.angle_max = 2 * math.pi - ANGLE_INCREMENT_RAD
+        msg.angle_increment = ANGLE_INCREMENT_RAD
+        msg.time_increment = 0.0
+        msg.scan_time = CONTROL_PERIOD_S
+        msg.range_min = RANGE_MIN_M
+        msg.range_max = RANGE_MAX_M
+        msg.ranges = list(self.lidar_distance_list)
+        self.scan_pub.publish(msg)
 
     def publish_static_transforms(self) -> None:
         stamp = self.get_clock().now().to_msg()
@@ -226,8 +244,8 @@ class RobotRosNode(Node):
         except np.linalg.LinAlgError:
             diag = np.maximum(np.diag(state_cov), 1e-9)
             state_cov = np.diag(diag)
-        
-        #This just appends the existing 3-state covariance with variances for other positions. 
+
+        #This just appends the existing 3-state covariance with variances for other positions.
         cov = np.zeros((6, 6), dtype=float)
         cov[0:2, 0:2] = state_cov[0:2, 0:2]
         cov[0, 5] = state_cov[0, 2]
@@ -353,11 +371,6 @@ class RobotRosNode(Node):
 
 
 def main() -> None:
-    joystick = connect_controller()
-    if joystick is None:
-        print("No controller detected. Exiting.", flush=True)
-        return
-
     rclpy.init()
     ros_node = RobotRosNode()
     robot, udp = connect_robot()
@@ -378,17 +391,18 @@ def main() -> None:
         while rclpy.ok():
             loop_start = time.perf_counter()
 
-            pygame.event.pump()
+            axes = ros_node.joy_axes
+            buttons = ros_node.joy_buttons
 
-            steer_axis = clamp(joystick.get_axis(STEER_AXIS), -1.0, 1.0)
+            steer_axis = clamp(axes[STEER_AXIS] if len(axes) > STEER_AXIS else 0.0, -1.0, 1.0)
             cmd_steering = int(round(steer_axis * STEER_SCALE))
 
             speed_axis = clamp(
-                SPEED_AXIS_SIGN * joystick.get_axis(SPEED_AXIS), 0.0, 1.0
+                SPEED_AXIS_SIGN * (axes[SPEED_AXIS] if len(axes) > SPEED_AXIS else 0.0), 0.0, 1.0
             )
             cmd_speed = int(round(speed_axis * MAX_SPEED))
 
-            log_toggle_button_pressed = bool(joystick.get_button(LOG_TOGGLE_BUTTON))
+            log_toggle_button_pressed = bool(buttons[LOG_TOGGLE_BUTTON]) if len(buttons) > LOG_TOGGLE_BUTTON else False
             if log_toggle_button_pressed and not log_toggle_button_prev:
                 logging_active = not logging_active
                 if logging_active:
@@ -398,6 +412,9 @@ def main() -> None:
             log_toggle_button_prev = log_toggle_button_pressed
 
             robot.control_loop(cmd_speed, cmd_steering, logging_active)
+
+            ros_node._update_lidar_bins(robot.robot_sensor_signal)
+            ros_node.publish_lidar(ros_node.get_clock().now().to_msg())
 
             encoder_counts = robot.robot_sensor_signal.encoder_counts
             now = time.perf_counter()
@@ -450,7 +467,6 @@ def main() -> None:
         pass
     finally:
         disconnect_robot(robot, udp)
-        disconnect_controller(joystick)
         ros_node.destroy_node()
         rclpy.shutdown()
 

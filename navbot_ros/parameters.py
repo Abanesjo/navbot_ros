@@ -74,8 +74,21 @@ camera_roll = -1.5708
 camera_pitch = 0
 camera_yaw = -1.5708
 
-
 #Camera Variances (custom 3-dof measurement)
 Q_x = 0.5
 Q_y = 0.5
 Q_theta = 0.5
+
+#Particle Variance
+num_particles = 100
+wall_corner_list = [
+    [0, 0, 2.74, 0], 
+    [0, 0, 0, 3.78], 
+    [0, 3.78, 1.92, 3.78],
+    [1.03, 1.61, 1.03, 2.19],
+    [1.03, 2.19, 1.41, 2.19],
+    [1.92, 3.78, 1.92, 3.32],
+    [1.92, 3.32, 2.74, 3.32],
+    [2.74, 3.32, 2.74, 0]
+    ]
+distance_variance = 0.01
