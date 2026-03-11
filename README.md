@@ -3,6 +3,7 @@
 This package contains ROS drivers and solutions for EKF and Particle Filtered, built on the two-wheel drive from the ROB-GY 6213 course. More information is on the class website in 
 
 <p align="center">
+    <img src="docs/frame_visualization.png"/>
     <a href="https://sites.google.com/nyu.edu/rob-gy6213">https://sites.google.com/nyu.edu/rob-gy6213</a>
 </p>
 
