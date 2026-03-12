@@ -47,3 +47,45 @@ ros2 launch navbot_ros bringup_ekf.launch.xml rviz:=true
 ```
 
 ## Particle Filter
+In this setup, odometry is estimated via a particle filter. The baseline wheel odometry is corrected using measurements from a LiDAR. 
+
+### Map Creation
+First, a map is created. For this, we combine the accurate EKF odometry with the LiDAR sensing to generate a map from [slam_toolbox](https://github.com/SteveMacenski/slam_toolbox). 
+
+<p align="center">
+    <img src="docs/pass.png"/>
+</p>
+
+The mapping process can be started with
+
+```
+source install/setup.bash
+ros2 launch navbot_ros bringup_slam.launch.xml
+```
+
+
+Once the map is sufficient, it can be saved by calling
+
+```
+ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap "name: {data: 'map_name}"
+```
+
+Note that for the next step, it is recommended to use third party image editing software to clean up the map to improve performance. 
+
+### Distance Field Generation
+
+As part of the particle filter process, the map is used to compute a distance field offline. 
+
+<p align="center">
+    <img src="docs/distances.png"/>
+</p>
+
+This can be done via
+
+```
+source install/setup.bash
+ros2 run navbot_ros distance_field.py 
+```
+
+### Particle Filter Implementation
+TODO

@@ -17,10 +17,7 @@ install(
 
 ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
-  scripts/test.py
   scripts/robot_ros_node.py
-  scripts/controller_test.py
-  scripts/straight.py
   scripts/publish_guides.py
   scripts/logger.py
   scripts/plot_odometry.py
