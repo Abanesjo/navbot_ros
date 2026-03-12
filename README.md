@@ -80,12 +80,5 @@ As part of the particle filter process, the map is used to compute a distance fi
     <img src="docs/distances.png"/>
 </p>
 
-This can be done via
-
-```
-source install/setup.bash
-ros2 run navbot_ros distance_field.py 
-```
-
 ### Particle Filter Implementation
 TODO
