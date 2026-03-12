@@ -7,13 +7,13 @@ This package contains ROS drivers and solutions for EKF and Particle Filtered, b
     <a href="https://sites.google.com/nyu.edu/rob-gy6213">https://sites.google.com/nyu.edu/rob-gy6213</a>
 </p>
 
-## Installation
-This is a standard ROS2 package. You may install it as follows. 
+## Installation (Manual)
+This is a standard ROS2 package. For convenience, docker workflow is provided.
 
 ```
 mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
-git clone https://github.com/Abanesjo/navbot_ros
+git clone https://github.com/Abanesjo/navbot_ros navbot
 cd ~/ros2_ws
 rosdep install --from-path src --ignore-src -r -y
 colcon build --symlink-install && source install/setup.bash
@@ -29,6 +29,20 @@ Then modify the following files as per the setup (IP addresses, covariances, etc
 - `robot_arduino_code/robot_arduino_code.ino`
 
 The `.ino` file is what is compiled on the robot's arduino board.
+
+## Installation (Docker)
+For convenience, docker workflow is also supported.
+
+Make sure that [docker](https://www.docker.com/get-started/) is installed.
+
+Then clone and run
+
+```
+git clone https://github.com/Abanesjo/navbot_ros navbot
+./build_and_run.sh
+```
+
+This will put you automatically inside the docker container where you can run the commands below. The volume is mounted onto host and the container is automatically deleted after exit.
 
 ## Extended Kalman Filter
 The EKF implementation fuses wheel odometry and camera odometry, as shown in the demonstration below. 

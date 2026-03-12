@@ -19,7 +19,4 @@
 
     <!-- Logging -->
     <node name="logger" pkg="navbot_ros" exec="logger.py"/>
-
-    <!-- Path Publisher -->
-    <node name="path_publisher" pkg="navbot_ros" exec="path_publisher.py"/>
 </launch>

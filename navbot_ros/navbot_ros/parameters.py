@@ -10,8 +10,8 @@ arduinoPort = 4010
 bufferSize = 1024
 
 # Camera parameters
-video_device="/dev/video4"
-camera_id = 4
+video_device="/dev/video0"
+camera_id = 0
 marker_length = 0.081756
 camera_matrix = np.array(
     [
