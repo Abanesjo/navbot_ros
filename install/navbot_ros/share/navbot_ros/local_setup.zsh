@@ -1,0 +1,1 @@
+/home/nav/ros2_ws/src/navbot/build/navbot_ros/ament_cmake_environment_hooks/local_setup.zsh

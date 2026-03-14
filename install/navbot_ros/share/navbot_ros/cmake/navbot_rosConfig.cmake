@@ -1,0 +1,1 @@
+/home/nav/ros2_ws/src/navbot/build/navbot_ros/ament_cmake_core/navbot_rosConfig.cmake

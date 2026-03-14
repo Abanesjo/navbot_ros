@@ -1,0 +1,1 @@
+/home/nav/ros2_ws/src/navbot/navbot_ros/scripts/robot_ros_node.py

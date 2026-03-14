@@ -9,16 +9,19 @@ import cv2.aruco as aruco
 import numpy as np
 import rclpy
 from geometry_msgs.msg import TransformStamped
+from geometry_msgs.msg import Pose, PoseArray
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import Image, Joy, LaserScan
+from std_msgs.msg import Int64
 from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
 from cv_bridge import CvBridge
 
 from navbot_ros import parameters
 from navbot_ros import robot_python_code
 from navbot_ros.extended_kalman_filter import ExtendedKalmanFilter
+from navbot_ros.particle_filter import Map, ParticleFilter, State
 from navbot_ros.robot import Robot
 
 
@@ -34,6 +37,9 @@ SPEED_AXIS_SIGN = 1.0
 STEER_SCALE = 20
 MAX_SPEED = 100
 LOG_TOGGLE_BUTTON = 3
+# Keep unknown-start PF sampling aligned with publish_guides.py.
+GUIDE_FIELD_WIDTH_X_M = 1.8
+GUIDE_FIELD_HEIGHT_Y_M = 0.9
 
 
 def clamp(value, low, high):
@@ -78,10 +84,12 @@ class RobotRosNode(Node):
         self.scan_pub = self.create_publisher(LaserScan, "/scan", 10)
         self.lidar_distance_list = [float('inf')] * NUM_BINS
         self.camera_odom_pub = self.create_publisher(Odometry, "/odom/camera", 10)
-        self.filtered_odom_pub = self.create_publisher(Odometry, "/odom/filtered", 10)
+        self.pf_odom_pub = self.create_publisher(Odometry, "/odom/pf", 10)
+        self.particle_cloud_pub = self.create_publisher(PoseArray, "/pf/particles", 10)
+        self.encoder_count_pub = self.create_publisher(Int64, "/encoder_count", 10)
         self.wheel_odom_pub = self.create_publisher(Odometry, "/odom/wheel", 10)
         self.image_pub = self.create_publisher(Image, "/camera/image", 10)
-        self.declare_parameter("covariance_scaling", 1.0)
+        self.declare_parameter("pf_known_start", True)
         self.cv_bridge = CvBridge()
         self.marker_length = float(parameters.marker_length)
         self.camera_matrix = np.asarray(parameters.camera_matrix)
@@ -258,47 +266,52 @@ class RobotRosNode(Node):
         cov[4, 4] = pitch_var
         return cov
 
-    def publish_filtered_odom(self, state_mean, state_covariance) -> None:
-        if state_mean is None or len(state_mean) < 3:
+    def publish_pf_odom(self, state_mean: State) -> None:
+        if state_mean is None:
             return
 
-        x = float(state_mean[0])
-        y = float(state_mean[1])
-        yaw = float(state_mean[2])
+        x = float(state_mean.x)
+        y = float(state_mean.y)
+        yaw = float(state_mean.theta)
         qx, qy, qz, qw = Rotation.from_euler("xyz", [0.0, 0.0, yaw]).as_quat(
             canonical=False
         )
 
+        stamp = self.get_clock().now().to_msg()
         odom = Odometry()
-        odom.header.stamp = self.get_clock().now().to_msg()
+        odom.header.stamp = stamp
         odom.header.frame_id = "odom"
         odom.child_frame_id = "base_link"
         odom.pose.pose.position.x = x
         odom.pose.pose.position.y = y
-        odom.pose.pose.position.z = float(parameters.marker_height)
+        odom.pose.pose.position.z = 0.0
         odom.pose.pose.orientation.x = float(qx)
         odom.pose.pose.orientation.y = float(qy)
         odom.pose.pose.orientation.z = float(qz)
         odom.pose.pose.orientation.w = float(qw)
 
-        covariance_scaling = float(self.get_parameter("covariance_scaling").value)
-        filtered_state_covariance = np.asarray(state_covariance, dtype=float).reshape(3, 3)
-        if covariance_scaling != 1.0:
-            # Scale the XY covariance ellipse for visualization while leaving yaw unchanged.
-            xy_scale = np.diag([covariance_scaling, covariance_scaling, 1.0])
-            filtered_state_covariance = (
-                xy_scale @ filtered_state_covariance @ xy_scale
-            )
-
         cov = self.build_pose_covariance(
-            filtered_state_covariance,
+            parameters.Q3,
             parameters.z_var,
             parameters.roll_var,
             parameters.pitch_var,
         )
         odom.pose.covariance = cov.flatten().tolist()
 
-        self.filtered_odom_pub.publish(odom)
+        self.pf_odom_pub.publish(odom)
+
+        transform = TransformStamped()
+        transform.header.stamp = stamp
+        transform.header.frame_id = "odom"
+        transform.child_frame_id = "base_link"
+        transform.transform.translation.x = x
+        transform.transform.translation.y = y
+        transform.transform.translation.z = 0.0
+        transform.transform.rotation.x = float(qx)
+        transform.transform.rotation.y = float(qy)
+        transform.transform.rotation.z = float(qz)
+        transform.transform.rotation.w = float(qw)
+        self.tf_broadcaster.sendTransform(transform)
 
     def publish_wheel_odom(self, state_mean, state_covariance) -> None:
         if state_mean is None or len(state_mean) < 3:
@@ -333,11 +346,42 @@ class RobotRosNode(Node):
 
         self.wheel_odom_pub.publish(odom)
 
+    def publish_particle_cloud(self, particle_set) -> None:
+        if particle_set is None or len(particle_set.particle_list) == 0:
+            return
+
+        msg = PoseArray()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = "odom"
+        poses = []
+
+        for particle in particle_set.particle_list:
+            pose = Pose()
+            pose.position.x = float(particle.state.x)
+            pose.position.y = float(particle.state.y)
+            pose.position.z = 0.0
+            qx, qy, qz, qw = Rotation.from_euler(
+                "xyz", [0.0, 0.0, float(particle.state.theta)]
+            ).as_quat(canonical=False)
+            pose.orientation.x = float(qx)
+            pose.orientation.y = float(qy)
+            pose.orientation.z = float(qz)
+            pose.orientation.w = float(qw)
+            poses.append(pose)
+
+        msg.poses = poses
+        self.particle_cloud_pub.publish(msg)
+
     def publish_image(self, frame: np.ndarray) -> None:
         msg = self.cv_bridge.cv2_to_imgmsg(frame, encoding="bgr8")
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = "camera_frame"
         self.image_pub.publish(msg)
+
+    def publish_encoder_count(self, encoder_counts: int) -> None:
+        msg = Int64()
+        msg.data = int(encoder_counts)
+        self.encoder_count_pub.publish(msg)
 
     def process_frame(self, frame: np.ndarray):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -374,6 +418,25 @@ def main() -> None:
     rclpy.init()
     ros_node = RobotRosNode()
     robot, udp = connect_robot()
+    pf_map = Map(parameters.wall_corner_list)
+    pf_known_start = bool(ros_node.get_parameter("pf_known_start").value)
+    if not pf_known_start:
+        pf_map.particle_range = [
+            0.0,
+            GUIDE_FIELD_WIDTH_X_M,
+            -0.5 * GUIDE_FIELD_HEIGHT_Y_M,
+            0.5 * GUIDE_FIELD_HEIGHT_Y_M,
+        ]
+    pf_initial_state = State(0.0, 0.0, 0.0)
+    pf_state_stdev = State(0.1, 0.1, 0.1)
+    particle_filter = ParticleFilter(
+        parameters.num_particles,
+        pf_map,
+        initial_state=pf_initial_state,
+        state_stdev=pf_state_stdev,
+        known_start_state=pf_known_start,
+        encoder_counts_0=robot.robot_sensor_signal.encoder_counts,
+    )
     wheel_ekf = ExtendedKalmanFilter(
         x_0=[0.0, 0.0, 0.0],
         Sigma_0=parameters.I3,
@@ -417,11 +480,15 @@ def main() -> None:
             ros_node.publish_lidar(ros_node.get_clock().now().to_msg())
 
             encoder_counts = robot.robot_sensor_signal.encoder_counts
+            ros_node.publish_encoder_count(encoder_counts)
+            sensor_signal_ready = robot.robot_sensor_signal.num_lidar_rays > 0
             now = time.perf_counter()
             if not wheel_initialized:
-                wheel_last_encoder_count = encoder_counts
-                last_loop_time = now
-                wheel_initialized = True
+                if sensor_signal_ready:
+                    wheel_last_encoder_count = encoder_counts
+                    particle_filter.last_encoder_counts = encoder_counts
+                    last_loop_time = now
+                    wheel_initialized = True
             else:
                 delta_t = now - last_loop_time
                 last_loop_time = now
@@ -438,10 +505,17 @@ def main() -> None:
                 )
                 wheel_ekf.update([v, phi], None, delta_t)
 
-            ros_node.publish_filtered_odom(
-                robot.extended_kalman_filter.state_mean,
-                robot.extended_kalman_filter.state_covariance,
-            )
+                pf_control = np.array(
+                    [
+                        robot.robot_sensor_signal.encoder_counts,
+                        robot.robot_sensor_signal.steering,
+                    ],
+                    dtype=float,
+                )
+                particle_filter.update(pf_control, robot.robot_sensor_signal, delta_t)
+
+            ros_node.publish_pf_odom(particle_filter.particle_set.mean_state)
+            ros_node.publish_particle_cloud(particle_filter.particle_set)
             ros_node.publish_wheel_odom(
                 wheel_ekf.state_mean,
                 wheel_ekf.state_covariance,

@@ -21,6 +21,15 @@ try:
 except ImportError:
     yaml = None
 
+try:
+    from ament_index_python.packages import (
+        PackageNotFoundError,
+        get_package_share_directory,
+    )
+except ImportError:
+    PackageNotFoundError = None
+    get_package_share_directory = None
+
 # Local libraries
 from . import parameters
 from .motion_models import MyMotionModel
@@ -164,9 +173,26 @@ class Map:
 
     def _load_distance_field_map(self):
         file_dir = os.path.dirname(os.path.abspath(__file__))
-        maps_dir = os.path.normpath(os.path.join(file_dir, "..", "maps"))
+        candidate_maps_dirs = [os.path.normpath(os.path.join(file_dir, "..", "maps"))]
+        if get_package_share_directory is not None:
+            try:
+                package_share_dir = get_package_share_directory("navbot_ros")
+                candidate_maps_dirs.append(os.path.join(package_share_dir, "maps"))
+            except (PackageNotFoundError, LookupError):
+                pass
+
+        maps_dir = candidate_maps_dirs[0]
         map_yaml_path = os.path.join(maps_dir, "map1", "map.yaml")
         processed_map_path = os.path.join(maps_dir, "map1", "map_processed.png")
+        for candidate_dir in candidate_maps_dirs:
+            candidate_processed_map_path = os.path.join(
+                candidate_dir, "map1", "map_processed.png"
+            )
+            if os.path.exists(candidate_processed_map_path):
+                maps_dir = candidate_dir
+                map_yaml_path = os.path.join(maps_dir, "map1", "map.yaml")
+                processed_map_path = candidate_processed_map_path
+                break
 
         self.resolution = DEFAULT_MAP_RESOLUTION
         self.origin = list(DEFAULT_MAP_ORIGIN)
@@ -190,7 +216,14 @@ class Map:
             if self.map_arr.dtype != np.uint8:
                 self.map_arr = np.clip(self.map_arr * 255.0, 0, 255).astype(np.uint8)
         if self.map_arr is None:
-            raise FileNotFoundError(f"Could not load processed map image: {processed_map_path}")
+            searched_paths = [
+                os.path.join(path, "map1", "map_processed.png")
+                for path in candidate_maps_dirs
+            ]
+            raise FileNotFoundError(
+                "Could not load processed map image. Searched: "
+                + ", ".join(searched_paths)
+            )
 
         self.height, self.width = self.map_arr.shape
         occ_pixel_thresh = int((1.0 - occupied_thresh) * 255)

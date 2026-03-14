@@ -1,0 +1,90 @@
+-- The C compiler identification is GNU 11.4.0
+-- The CXX compiler identification is GNU 11.4.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found ament_cmake: 1.3.13 (/opt/ros/humble/share/ament_cmake/cmake)
+-- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+-- Override CMake install command with custom implementation using symlinks instead of copying resources
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/nav/ros2_ws/src/navbot/build/navbot_ros
+Built target ament_cmake_python_symlink_navbot_ros
+running egg_info
+creating navbot_ros.egg-info
+writing navbot_ros.egg-info/PKG-INFO
+writing dependency_links to navbot_ros.egg-info/dependency_links.txt
+writing top-level names to navbot_ros.egg-info/top_level.txt
+writing manifest file 'navbot_ros.egg-info/SOURCES.txt'
+reading manifest file 'navbot_ros.egg-info/SOURCES.txt'
+writing manifest file 'navbot_ros.egg-info/SOURCES.txt'
+Built target ament_cmake_python_build_navbot_ros_egg
+-- Install configuration: ""
+-- Execute custom install script
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/config/navbot.rviz
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/config/slam_toolbox_params.yaml
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/launch/bringup_ekf.launch.xml
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/launch/bringup_pf.launch.xml
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/launch/bringup_slam.launch.xml
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/maps/.DS_Store
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/maps/distance_field.png
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/maps/map1/map.svg
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/maps/map1/map.yaml
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/maps/map1/map_processed.png
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/maps/map1/map_raw.png
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/maps/map_processing.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/environment/pythonpath.sh
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/environment/pythonpath.dsv
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros-0.0.0-py3.10.egg-info/PKG-INFO
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros-0.0.0-py3.10.egg-info/SOURCES.txt
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros-0.0.0-py3.10.egg-info/dependency_links.txt
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros-0.0.0-py3.10.egg-info/top_level.txt
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/__init__.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/camera_estimator.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/data_handling.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/extended_kalman_filter.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/motion_models.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/parameters.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/particle_filter.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/robot.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/robot_python_code.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/lib/navbot_ros/robot_ros_node.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/lib/navbot_ros/publish_guides.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/lib/navbot_ros/logger.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/lib/navbot_ros/plot_odometry.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/lib/navbot_ros/path_publisher.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/lib/navbot_ros/lidar_ros_node.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/lib/navbot_ros/lidar_marker_node.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/lib/navbot_ros/odom_tf_publisher.py
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/ament_index/resource_index/package_run_dependencies/navbot_ros
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/ament_index/resource_index/parent_prefix_path/navbot_ros
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/environment/ament_prefix_path.sh
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/environment/ament_prefix_path.dsv
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/environment/path.sh
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/environment/path.dsv
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/local_setup.bash
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/local_setup.sh
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/local_setup.zsh
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/local_setup.dsv
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/package.dsv
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/ament_index/resource_index/packages/navbot_ros
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/cmake/navbot_rosConfig.cmake
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/cmake/navbot_rosConfig-version.cmake
+-- Symlinking: /home/nav/ros2_ws/src/navbot/install/navbot_ros/share/navbot_ros/package.xml
+Listing '/home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros'...
+Compiling '/home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/__init__.py'...
+Compiling '/home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/camera_estimator.py'...
+Compiling '/home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/data_handling.py'...
+Compiling '/home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/extended_kalman_filter.py'...
+Compiling '/home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/motion_models.py'...
+Compiling '/home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/parameters.py'...
+Compiling '/home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/particle_filter.py'...
+Compiling '/home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/robot.py'...
+Compiling '/home/nav/ros2_ws/src/navbot/install/navbot_ros/local/lib/python3.10/dist-packages/navbot_ros/robot_python_code.py'...

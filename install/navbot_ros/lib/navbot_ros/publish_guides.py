@@ -1,0 +1,1 @@
+/home/nav/ros2_ws/src/navbot/navbot_ros/scripts/publish_guides.py

@@ -1,0 +1,11 @@
+/home/nav/ros2_ws/src/navbot/build/navbot_ros/CMakeFiles/uninstall.dir
+/home/nav/ros2_ws/src/navbot/build/navbot_ros/CMakeFiles/navbot_ros_uninstall.dir
+/home/nav/ros2_ws/src/navbot/build/navbot_ros/CMakeFiles/ament_cmake_python_symlink_navbot_ros.dir
+/home/nav/ros2_ws/src/navbot/build/navbot_ros/CMakeFiles/ament_cmake_python_build_navbot_ros_egg.dir
+/home/nav/ros2_ws/src/navbot/build/navbot_ros/CMakeFiles/test.dir
+/home/nav/ros2_ws/src/navbot/build/navbot_ros/CMakeFiles/edit_cache.dir
+/home/nav/ros2_ws/src/navbot/build/navbot_ros/CMakeFiles/rebuild_cache.dir
+/home/nav/ros2_ws/src/navbot/build/navbot_ros/CMakeFiles/list_install_components.dir
+/home/nav/ros2_ws/src/navbot/build/navbot_ros/CMakeFiles/install.dir
+/home/nav/ros2_ws/src/navbot/build/navbot_ros/CMakeFiles/install/local.dir
+/home/nav/ros2_ws/src/navbot/build/navbot_ros/CMakeFiles/install/strip.dir

@@ -14,7 +14,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile
 ODOM_TOPICS = {
     "wheel": "/odom/wheel",
     "camera": "/odom/camera",
-    "filtered": "/odom/filtered",
+    "pf": "/odom/pf",
 }
 GROUND_TRUTH_NAME = "ground_truth"
 GROUND_TRUTH_TOPIC = "/ground_truth"
@@ -62,7 +62,7 @@ class PathPublisher(Node):
         )
 
         self.get_logger().info(
-            "Publishing paths on /path/{wheel,camera,filtered} and ground truth PoseArray on /path/ground_truth"
+            "Publishing paths on /path/{wheel,camera,pf} and ground truth PoseArray on /path/ground_truth"
         )
 
     def _odom_callback(self, source: str, msg: Odometry) -> None:
