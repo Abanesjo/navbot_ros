@@ -48,6 +48,14 @@ MIN_VALID_LIDAR_RANGE = 0.02
 MAX_USEFUL_LIDAR_RANGE = 5.0
 LIDAR_BEAM_STRIDE = 4
 MIN_PARTICLE_WEIGHT = 1e-12
+# Resample only when particle weights become too concentrated.
+RESAMPLE_EFFECTIVE_RATIO = 0.5
+# Replace a small fraction of particles with global random hypotheses.
+RANDOM_PARTICLE_FRACTION = 0.05
+# Apply light jitter after resampling to avoid identical clones.
+ROUGHEN_X_STD = 0.02
+ROUGHEN_Y_STD = 0.02
+ROUGHEN_THETA_STD = math.radians(3.0)
 
 # Helper function to make sure all angles are between -pi and pi
 def angle_wrap(angle):
@@ -409,9 +417,35 @@ class ParticleSet:
             random_particle.randomize_around_initial_state(initial_state, state_stdev)
             self.particle_list.append(random_particle)
 
-    # Function to resample the particles set, i.e. make a new one with more copies of particles with higher weights.  
-    def resample(self, max_weight):
-        ################## Add student code here ###################
+    # Effective sample size: lower values indicate stronger weight collapse.
+    def effective_sample_size(self):
+        if len(self.particle_list) == 0:
+            return 0.0
+
+        weights = np.array(
+            [max(float(particle.weight), 0.0) for particle in self.particle_list],
+            dtype=float,
+        )
+        weight_sum = float(np.sum(weights))
+        if weight_sum <= 0.0:
+            return 0.0
+        normalized_weights = weights / weight_sum
+        return float(1.0 / np.sum(normalized_weights ** 2))
+
+    def roughen_particles(self, skip_indices=None):
+        if skip_indices is None:
+            skip_indices = set()
+        for particle_index, particle in enumerate(self.particle_list):
+            if particle_index in skip_indices:
+                continue
+            particle.state.x += random.gauss(0.0, ROUGHEN_X_STD)
+            particle.state.y += random.gauss(0.0, ROUGHEN_Y_STD)
+            particle.state.theta = angle_wrap(
+                particle.state.theta + random.gauss(0.0, ROUGHEN_THETA_STD)
+            )
+
+    # Function to resample the particles set, i.e. make a new one with more copies of particles with higher weights.
+    def resample(self, xy_range):
         if len(self.particle_list) == 0:
             return
 
@@ -439,7 +473,22 @@ class ParticleSet:
             particle_copy.weight = step
             resampled_particles.append(particle_copy)
 
+        injected_indices = set()
+        num_to_inject = int(round(RANDOM_PARTICLE_FRACTION * self.num_particles))
+        num_to_inject = max(0, min(self.num_particles, num_to_inject))
+        if num_to_inject > 0:
+            injected_indices = set(random.sample(range(self.num_particles), num_to_inject))
+            for injected_index in injected_indices:
+                random_particle = Particle()
+                random_particle.randomize_uniformly(xy_range)
+                resampled_particles[injected_index] = random_particle
+
         self.particle_list = resampled_particles
+        self.roughen_particles(skip_indices=injected_indices)
+
+        uniform_weight = 1.0 / self.num_particles
+        for particle in self.particle_list:
+            particle.weight = uniform_weight
             
     # Calculate the mean state. 
     def update_mean_state(self):
@@ -451,20 +500,29 @@ class ParticleSet:
             self.mean_state.theta = 0
             return
 
+        weights = np.array(
+            [max(float(particle.weight), 0.0) for particle in self.particle_list],
+            dtype=float,
+        )
+        weight_sum = float(np.sum(weights))
+        if weight_sum <= 0.0:
+            normalized_weights = np.full(len(self.particle_list), 1.0 / len(self.particle_list))
+        else:
+            normalized_weights = weights / weight_sum
+
         x_mean = 0.0
         y_mean = 0.0
         sin_mean = 0.0
         cos_mean = 0.0
-        for particle in self.particle_list:
-            x_mean += particle.state.x
-            y_mean += particle.state.y
-            sin_mean += math.sin(particle.state.theta)
-            cos_mean += math.cos(particle.state.theta)
+        for weight, particle in zip(normalized_weights, self.particle_list):
+            x_mean += weight * particle.state.x
+            y_mean += weight * particle.state.y
+            sin_mean += weight * math.sin(particle.state.theta)
+            cos_mean += weight * math.cos(particle.state.theta)
 
-        count = float(len(self.particle_list))
-        self.mean_state.x = x_mean / count
-        self.mean_state.y = y_mean / count
-        self.mean_state.theta = math.atan2(sin_mean / count, cos_mean / count)
+        self.mean_state.x = x_mean
+        self.mean_state.y = y_mean
+        self.mean_state.theta = math.atan2(sin_mean, cos_mean)
         
     # Print the particle set. Useful for debugging.
     def print_particles(self):
@@ -491,6 +549,7 @@ class ParticleFilter:
         if len(measurement_signal.angles)>0:
             self.correction(measurement_signal)
         self.particle_set.update_mean_state()
+        self.state_estimate = self.particle_set.mean_state
         self.state_estimate_list.append(self.state_estimate.deepcopy())
 
     # Predict the current state from the last state.
@@ -511,25 +570,26 @@ class ParticleFilter:
     # Corrrect the predicted states.
     def correction(self, measurement_signal):
         ################## Add student code here ###################
-        # Determine the max weight and use it to resample the particle set.
-        max_weight = 0
+        # Determine normalized particle weights from the lidar likelihood model.
         weight_sum = 0.0
         for particle in self.particle_set.particle_list:
             particle.calculate_weight(measurement_signal, self.map)
-            max_weight = max(max_weight, particle.weight)
             weight_sum += particle.weight
 
         if weight_sum <= 0:
             uniform_weight = 1.0 / max(len(self.particle_set.particle_list), 1)
             for particle in self.particle_set.particle_list:
                 particle.weight = uniform_weight
-            max_weight = uniform_weight
         else:
             for particle in self.particle_set.particle_list:
                 particle.weight = particle.weight / weight_sum
-            max_weight = max(particle.weight for particle in self.particle_set.particle_list)
 
-        self.particle_set.resample(max_weight)
+        # Adaptive resampling: only resample when the weighted set is impoverished.
+        n_eff = self.particle_set.effective_sample_size()
+        resample_threshold = RESAMPLE_EFFECTIVE_RATIO * self.particle_set.num_particles
+        if n_eff < resample_threshold:
+            self.particle_set.resample(self.map.particle_range)
+
         self.particle_set.update_mean_state()
         self.state_estimate = self.particle_set.mean_state
         
