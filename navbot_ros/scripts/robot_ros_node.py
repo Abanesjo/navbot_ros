@@ -444,11 +444,13 @@ def main() -> None:
     )
     wheel_ekf.correct = False
     wheel_last_encoder_count = robot.robot_sensor_signal.encoder_counts
-    wheel_initialized = False
+    pf_previous_encoder_count = robot.robot_sensor_signal.encoder_counts
+    sensor_initialized = False
 
     logging_active = False
     log_toggle_button_prev = False
     last_loop_time = time.perf_counter()
+    pf_last_motion_time = last_loop_time
 
     try:
         while rclpy.ok():
@@ -483,12 +485,14 @@ def main() -> None:
             ros_node.publish_encoder_count(encoder_counts)
             sensor_signal_ready = robot.robot_sensor_signal.num_lidar_rays > 0
             now = time.perf_counter()
-            if not wheel_initialized:
+            if not sensor_initialized:
                 if sensor_signal_ready:
                     wheel_last_encoder_count = encoder_counts
+                    pf_previous_encoder_count = encoder_counts
                     particle_filter.last_encoder_counts = encoder_counts
                     last_loop_time = now
-                    wheel_initialized = True
+                    pf_last_motion_time = now
+                    sensor_initialized = True
             else:
                 delta_t = now - last_loop_time
                 last_loop_time = now
@@ -505,14 +509,25 @@ def main() -> None:
                 )
                 wheel_ekf.update([v, phi], None, delta_t)
 
-                pf_control = np.array(
-                    [
-                        robot.robot_sensor_signal.encoder_counts,
-                        robot.robot_sensor_signal.steering,
-                    ],
-                    dtype=float,
-                )
-                particle_filter.update(pf_control, robot.robot_sensor_signal, delta_t)
+                motion_update = encoder_counts != pf_previous_encoder_count
+                if motion_update:
+                    pf_delta_t = now - pf_last_motion_time
+                    pf_last_motion_time = now
+                    if pf_delta_t <= 0.0:
+                        pf_delta_t = CONTROL_PERIOD_S
+
+                    pf_control = np.array(
+                        [
+                            robot.robot_sensor_signal.encoder_counts,
+                            robot.robot_sensor_signal.steering,
+                        ],
+                        dtype=float,
+                    )
+                    # Camera odometry stays reference-only; PF correction remains lidar-only in ParticleFilter.update().
+                    particle_filter.update(
+                        pf_control, robot.robot_sensor_signal, pf_delta_t
+                    )
+                pf_previous_encoder_count = encoder_counts
 
             ros_node.publish_pf_odom(particle_filter.particle_set.mean_state)
             ros_node.publish_particle_cloud(particle_filter.particle_set)
