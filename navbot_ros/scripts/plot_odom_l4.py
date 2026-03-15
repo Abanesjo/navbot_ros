@@ -56,7 +56,10 @@ MAX_TIME_GAP_S = 0.50
 PLOT_SMOOTH_WINDOW = 7
 
 
-def read_bag_odom_series(bag_path: str) -> Dict[str, List[Tuple[float, float, float, float]]]:
+def read_bag_odom_series(
+    bag_path: str,
+    use_header_stamp: bool = False,
+) -> Dict[str, List[Tuple[float, float, float, float]]]:
     """Return dict: key -> list of (t_sec, x, y, yaw)."""
     storage_options = rosbag2_py.StorageOptions(uri=bag_path, storage_id="sqlite3")
     converter_options = rosbag2_py.ConverterOptions(
@@ -98,7 +101,14 @@ def read_bag_odom_series(bag_path: str) -> Dict[str, List[Tuple[float, float, fl
         cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
         yaw = math.atan2(siny_cosp, cosy_cosp)
 
-        t_sec = timestamp_ns * 1e-9
+        bag_t_sec = timestamp_ns * 1e-9
+        if use_header_stamp:
+            header_stamp = msg.header.stamp
+            header_t_sec = float(header_stamp.sec) + float(header_stamp.nanosec) * 1e-9
+            # Fall back to bag timestamp if header stamp is missing/invalid.
+            t_sec = header_t_sec if header_t_sec > 0.0 else bag_t_sec
+        else:
+            t_sec = bag_t_sec
         series[matching_key].append((t_sec, x, y, yaw))
 
     # Make absolutely sure each series is time-sorted
@@ -194,100 +204,119 @@ def segmented_xy(
     return np.asarray(xs), np.asarray(ys)
 
 
-# def smooth_with_nans(data: np.ndarray, window: int) -> np.ndarray:
-#     """Apply moving-average smoothing separately on each non-NaN segment."""
-#     if window <= 1 or len(data) == 0:
-#         return data.copy()
-
-#     out = data.copy()
-#     isnan = np.isnan(data)
-#     n = len(data)
-
-#     start = 0
-#     while start < n:
-#         while start < n and isnan[start]:
-#             start += 1
-#         if start >= n:
-#             break
-
-#         end = start
-#         while end < n and not isnan[end]:
-#             end += 1
-
-#         segment = data[start:end]
-#         if len(segment) >= window:
-#             kernel = np.ones(window, dtype=float) / float(window)
-#             out[start:end] = np.convolve(segment, kernel, mode="same")
-
-#         start = end
-
-#     return out
-
-MIN_SEGMENT_POINTS_TO_PLOT = 200
-
-def split_nan_segments(x: np.ndarray, y: np.ndarray):
-    segments = []
-    n = len(x)
-    start = 0
-    while start < n:
-        while start < n and (np.isnan(x[start]) or np.isnan(y[start])):
-            start += 1
-        if start >= n:
-            break
-        end = start
-        while end < n and not (np.isnan(x[end]) or np.isnan(y[end])):
-            end += 1
-        segments.append((x[start:end].copy(), y[start:end].copy()))
-        start = end
+def count_segments(x: np.ndarray, y: np.ndarray) -> int:
+    if len(x) == 0:
+        return 0
+    valid = ~(np.isnan(x) | np.isnan(y))
+    if not np.any(valid):
+        return 0
+    segments = 0
+    in_segment = False
+    for is_valid in valid:
+        if is_valid and not in_segment:
+            segments += 1
+            in_segment = True
+        elif not is_valid:
+            in_segment = False
     return segments
 
 
-def moving_average_segment(data: np.ndarray, window: int) -> np.ndarray:
-    if window <= 1 or len(data) < window:
+def smooth_with_nans(data: np.ndarray, window: int) -> np.ndarray:
+    """Apply moving-average smoothing separately on each non-NaN segment."""
+    if window <= 1 or len(data) == 0:
         return data.copy()
-    kernel = np.ones(window, dtype=float) / float(window)
-    return np.convolve(data, kernel, mode="same")
 
-def plot_xy(series_dict, output_path: Path, baseline_rmse: float, variant_rmse: float) -> None:
+    out = data.copy()
+    isnan = np.isnan(data)
+    n = len(data)
+
+    start = 0
+    while start < n:
+        while start < n and isnan[start]:
+            start += 1
+        if start >= n:
+            break
+
+        end = start
+        while end < n and not isnan[end]:
+            end += 1
+
+        segment = data[start:end]
+        if len(segment) >= window:
+            kernel = np.ones(window, dtype=float) / float(window)
+            out[start:end] = np.convolve(segment, kernel, mode="same")
+
+        start = end
+
+    return out
+
+
+def plot_xy(
+    series_dict,
+    output_path: Path,
+    baseline_rmse: float,
+    variant_rmse: float,
+    max_step_m: float = MAX_STEP_M,
+    max_gap_s: float = MAX_TIME_GAP_S,
+    segmentation_enabled: bool = True,
+    smoothing_enabled: bool = True,
+    points_only: bool = False,
+) -> Dict[str, int]:
     fig, ax = plt.subplots(figsize=(10, 8))
+    segment_counts: Dict[str, int] = {}
 
     for key in ["gt", "baseline", "variant"]:
         t, x, y, yaw = extract_xy(series_dict[key])
         if len(x) == 0:
+            segment_counts[key] = 0
             continue
 
-        x_plot, y_plot = segmented_xy(t, x, y)
-        segments = split_nan_segments(x_plot, y_plot)
-
-        first_segment = True
-        for seg_x, seg_y in segments:
-            if len(seg_x) < MIN_SEGMENT_POINTS_TO_PLOT:
-                continue
-
-            if key in ("baseline", "variant"):
-                seg_x = moving_average_segment(seg_x, PLOT_SMOOTH_WINDOW)
-                seg_y = moving_average_segment(seg_y, PLOT_SMOOTH_WINDOW)
-
-            label = "ground truth / camera" if key == "gt" else key
-            if not first_segment:
-                label = "_nolegend_"
-
-            ax.plot(
-                seg_x,
-                seg_y,
-                color=COLORS[key],
-                linewidth=2.8 if key == "gt" else 2.0,
-                label=label,
-                zorder=5 if key == "gt" else 3,
+        if segmentation_enabled:
+            x_plot, y_plot = segmented_xy(
+                t, x, y, max_step_m=max_step_m, max_time_gap_s=max_gap_s
             )
-            first_segment = False
+        else:
+            x_plot, y_plot = x.copy(), y.copy()
 
-    title = (
-    "PF comparison against camera ground truth\n"
-    f"RMSE vs camera → baseline: {baseline_rmse:.3f} m, "
-    f"variant: {variant_rmse:.3f} m"
+        # Smooth only the PF trajectories for visualization.
+        if smoothing_enabled and key in ("baseline", "variant"):
+            x_plot = smooth_with_nans(x_plot, PLOT_SMOOTH_WINDOW)
+            y_plot = smooth_with_nans(y_plot, PLOT_SMOOTH_WINDOW)
+
+        if segmentation_enabled:
+            segment_counts[key] = count_segments(x_plot, y_plot)
+        else:
+            segment_counts[key] = 1 if len(x_plot) > 0 else 0
+
+        if points_only:
+            label = "ground truth / camera" if key == "gt" else key
+            marker_size = 8 if key == "gt" else 6
+            ax.scatter(x_plot, y_plot, color=COLORS[key], s=marker_size, label=label, zorder=4)
+        elif key == "gt":
+            ax.plot(
+                x_plot,
+                y_plot,
+                color=COLORS[key],
+                linewidth=2.8,
+                label="ground truth / camera",
+                zorder=5,
+            )
+        else:
+            ax.plot(
+                x_plot,
+                y_plot,
+                color=COLORS[key],
+                linewidth=2.0,
+                label=key,
+                zorder=3,
+            )
+
+    title = "PF comparison against camera ground truth"
+    metrics = (
+        f"RMSE vs camera: baseline: {baseline_rmse:.3f} m | "
+        f"variant: {variant_rmse:.3f} m"
     )
-    ax.set_title(title)
+    ax.set_title(f"{title}\n{metrics}")
     ax.set_xlabel("x [m]")
     ax.set_ylabel("y [m]")
     ax.grid(True, alpha=0.4)
@@ -296,6 +325,7 @@ def plot_xy(series_dict, output_path: Path, baseline_rmse: float, variant_rmse: 
     fig.tight_layout()
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
+    return segment_counts
 
 
 def plot_error(series_dict, output_path: Path) -> None:
@@ -323,6 +353,38 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("bag_path", help="Path to rosbag2 folder")
     parser.add_argument("--output-dir", default="", help="Optional output directory")
+    parser.add_argument(
+        "--max-step-m",
+        type=float,
+        default=MAX_STEP_M,
+        help=f"Segmentation threshold on per-step position jump [m] (default: {MAX_STEP_M})",
+    )
+    parser.add_argument(
+        "--max-gap-s",
+        type=float,
+        default=MAX_TIME_GAP_S,
+        help=f"Segmentation threshold on timestamp gap [s] (default: {MAX_TIME_GAP_S})",
+    )
+    parser.add_argument(
+        "--no-segmentation",
+        action="store_true",
+        help="Disable NaN-based trajectory segmentation.",
+    )
+    parser.add_argument(
+        "--no-smoothing",
+        action="store_true",
+        help="Disable PF trajectory smoothing.",
+    )
+    parser.add_argument(
+        "--points-only",
+        action="store_true",
+        help="Render XY trajectories as points (scatter) instead of lines.",
+    )
+    parser.add_argument(
+        "--use-header-stamp",
+        action="store_true",
+        help="Use Odometry header stamp instead of rosbag timestamp (fallback to bag stamp if invalid).",
+    )
     args = parser.parse_args()
 
     bag_path = Path(args.bag_path).expanduser().resolve()
@@ -334,7 +396,9 @@ def main() -> int:
 
     rclpy.init()
     try:
-        series_dict = read_bag_odom_series(str(bag_path))
+        series_dict = read_bag_odom_series(
+            str(bag_path), use_header_stamp=args.use_header_stamp
+        )
     finally:
         rclpy.shutdown()
 
@@ -356,8 +420,34 @@ def main() -> int:
     xy_path = output_dir / f"{stem}_pf_compare_xy.png"
     err_path = output_dir / f"{stem}_pf_compare_error.png"
 
-    plot_xy(series_dict, xy_path, baseline_rmse, variant_rmse)
+    segment_counts = plot_xy(
+        series_dict,
+        xy_path,
+        baseline_rmse=baseline_rmse,
+        variant_rmse=variant_rmse,
+        max_step_m=args.max_step_m,
+        max_gap_s=args.max_gap_s,
+        segmentation_enabled=not args.no_segmentation,
+        smoothing_enabled=not args.no_smoothing,
+        points_only=args.points_only,
+    )
     plot_error(series_dict, err_path)
+
+    print(
+        "XY mode: "
+        f"points_only={args.points_only}, "
+        f"segmentation={'off' if args.no_segmentation else 'on'}, "
+        f"smoothing={'off' if args.no_smoothing else 'on'}"
+    )
+    print(
+        "Timestamp source: "
+        f"{'odom header stamp (fallback to bag stamp)' if args.use_header_stamp else 'rosbag record timestamp'}"
+    )
+    print(
+        f"Segmentation thresholds: max_step_m={args.max_step_m:.3f}, max_gap_s={args.max_gap_s:.3f}"
+    )
+    print("Segment counts (gt, baseline, variant): "
+          f"{segment_counts.get('gt', 0)}, {segment_counts.get('baseline', 0)}, {segment_counts.get('variant', 0)}")
 
     print(f"Saved: {xy_path}")
     print(f"Saved: {err_path}")
