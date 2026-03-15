@@ -57,6 +57,9 @@ ROUGHEN_X_STD = 0.02
 ROUGHEN_Y_STD = 0.02
 ROUGHEN_THETA_STD = math.radians(3.0)
 
+PF_MODE_BASELINE = "baseline"
+PF_MODE_VARIANT = "variant"
+
 # Helper function to make sure all angles are between -pi and pi
 def angle_wrap(angle):
     while angle > math.pi:
@@ -297,26 +300,27 @@ class Map:
 # Class to hold a particle
 class Particle:
     
-    def __init__(self):
+    def __init__(self, rng=None):
         self.state = State(0, 0, 0)
         self.weight = 1
         self.motion_model = MyMotionModel()
+        self.rng = rng if rng is not None else random.Random()
         
     # Function to create a new random particle state within a range
     def randomize_uniformly(self, xy_range):
         ################## Add student code here ###################
-        x = random.uniform(xy_range[0], xy_range[1])
-        y = random.uniform(xy_range[2], xy_range[3])
-        theta = random.uniform(-math.pi, math.pi)
+        x = self.rng.uniform(xy_range[0], xy_range[1])
+        y = self.rng.uniform(xy_range[2], xy_range[3])
+        theta = self.rng.uniform(-math.pi, math.pi)
         self.state = State(x, y, theta)
         self.weight = 1
 
     # Function to create a new random particle state with a normal distribution
     def randomize_around_initial_state(self, initial_state, state_stdev):
         ################## Add student code here ###################
-        x = random.gauss(initial_state.x, state_stdev.x)
-        y = random.gauss(initial_state.y, state_stdev.y)
-        theta = angle_wrap(random.gauss(initial_state.theta, state_stdev.theta))
+        x = self.rng.gauss(initial_state.x, state_stdev.x)
+        y = self.rng.gauss(initial_state.y, state_stdev.y)
+        theta = angle_wrap(self.rng.gauss(initial_state.theta, state_stdev.theta))
         self.state = State(x, y, theta)
         self.weight = 1
         
@@ -328,8 +332,8 @@ class Particle:
         phi_nominal = self.motion_model.get_steering_angle(steering)
         sigma_phi = math.sqrt(max(self.motion_model.get_variance_steering_angle(), 1e-12))
 
-        delta_s_sampled = random.gauss(delta_s_nominal, sigma_s)
-        phi_sampled = random.gauss(phi_nominal, sigma_phi)
+        delta_s_sampled = self.rng.gauss(delta_s_nominal, sigma_s)
+        phi_sampled = self.rng.gauss(phi_nominal, sigma_phi)
         delta_theta = (delta_s_sampled / self.motion_model.drivetrain_length) * math.tan(phi_sampled)
         theta_mid = last_state.theta + 0.5 * delta_theta
 
@@ -382,7 +386,10 @@ class Particle:
 
     # Deep copy the particle
     def deepcopy(self):
-        return copy.deepcopy(self)
+        particle_copy = Particle(rng=self.rng)
+        particle_copy.state = self.state.deepcopy()
+        particle_copy.weight = self.weight
+        return particle_copy
         
     # Print the particle
     def print(self):
@@ -393,8 +400,17 @@ class Particle:
 class ParticleSet:
     
     # Constructor, which calls the known start or unknown start initialization.
-    def __init__(self, num_particles, xy_range, initial_state, state_stdev, known_start_state):
+    def __init__(
+        self,
+        num_particles,
+        xy_range,
+        initial_state,
+        state_stdev,
+        known_start_state,
+        rng=None,
+    ):
         self.num_particles = num_particles
+        self.rng = rng if rng is not None else random.Random()
         self.particle_list = []
         if known_start_state:
             self.generate_initial_state_particles(initial_state, state_stdev)
@@ -406,14 +422,14 @@ class ParticleSet:
     # Function to reset particles and random locations in the workspace.
     def generate_uniform_random_particles(self, xy_range):
         for i in range(self.num_particles):
-            random_particle = Particle()
+            random_particle = Particle(rng=self.rng)
             random_particle.randomize_uniformly(xy_range)
             self.particle_list.append(random_particle)
 
     # Function to reset particles, normally distributed around the initial state. 
     def generate_initial_state_particles(self, initial_state, state_stdev):
         for i in range(self.num_particles):
-            random_particle = Particle()
+            random_particle = Particle(rng=self.rng)
             random_particle.randomize_around_initial_state(initial_state, state_stdev)
             self.particle_list.append(random_particle)
 
@@ -438,14 +454,14 @@ class ParticleSet:
         for particle_index, particle in enumerate(self.particle_list):
             if particle_index in skip_indices:
                 continue
-            particle.state.x += random.gauss(0.0, ROUGHEN_X_STD)
-            particle.state.y += random.gauss(0.0, ROUGHEN_Y_STD)
+            particle.state.x += self.rng.gauss(0.0, ROUGHEN_X_STD)
+            particle.state.y += self.rng.gauss(0.0, ROUGHEN_Y_STD)
             particle.state.theta = angle_wrap(
-                particle.state.theta + random.gauss(0.0, ROUGHEN_THETA_STD)
+                particle.state.theta + self.rng.gauss(0.0, ROUGHEN_THETA_STD)
             )
 
     # Function to resample the particles set, i.e. make a new one with more copies of particles with higher weights.
-    def resample(self, xy_range):
+    def resample(self, xy_range, enable_random_injection=True, enable_roughening=True):
         if len(self.particle_list) == 0:
             return
 
@@ -458,7 +474,7 @@ class ParticleSet:
 
         normalized_weights = [particle.weight / weight_sum for particle in self.particle_list]
         step = 1.0 / self.num_particles
-        position = random.uniform(0.0, step)
+        position = self.rng.uniform(0.0, step)
         cumulative_weight = normalized_weights[0]
         source_index = 0
         resampled_particles = []
@@ -476,15 +492,16 @@ class ParticleSet:
         injected_indices = set()
         num_to_inject = int(round(RANDOM_PARTICLE_FRACTION * self.num_particles))
         num_to_inject = max(0, min(self.num_particles, num_to_inject))
-        if num_to_inject > 0:
-            injected_indices = set(random.sample(range(self.num_particles), num_to_inject))
+        if enable_random_injection and num_to_inject > 0:
+            injected_indices = set(self.rng.sample(range(self.num_particles), num_to_inject))
             for injected_index in injected_indices:
-                random_particle = Particle()
+                random_particle = Particle(rng=self.rng)
                 random_particle.randomize_uniformly(xy_range)
                 resampled_particles[injected_index] = random_particle
 
         self.particle_list = resampled_particles
-        self.roughen_particles(skip_indices=injected_indices)
+        if enable_roughening:
+            self.roughen_particles(skip_indices=injected_indices)
 
         uniform_weight = 1.0 / self.num_particles
         for particle in self.particle_list:
@@ -534,9 +551,31 @@ class ParticleSet:
 class ParticleFilter:
     
     # Constructor
-    def __init__(self, num_particles, map, initial_state, state_stdev, known_start_state, encoder_counts_0):
+    def __init__(
+        self,
+        num_particles,
+        map,
+        initial_state,
+        state_stdev,
+        known_start_state,
+        encoder_counts_0,
+        algorithm_mode=PF_MODE_VARIANT,
+        rng=None,
+    ):
         self.map = map
-        self.particle_set = ParticleSet(num_particles, map.particle_range, initial_state, state_stdev, known_start_state)
+        self.rng = rng if rng is not None else random.Random()
+        mode = str(algorithm_mode).strip().lower()
+        if mode not in (PF_MODE_BASELINE, PF_MODE_VARIANT):
+            mode = PF_MODE_VARIANT
+        self.algorithm_mode = mode
+        self.particle_set = ParticleSet(
+            num_particles,
+            map.particle_range,
+            initial_state,
+            state_stdev,
+            known_start_state,
+            rng=self.rng,
+        )
         self.state_estimate = self.particle_set.mean_state
         self.state_estimate_list = []
         self.last_time = 0
@@ -584,11 +623,19 @@ class ParticleFilter:
             for particle in self.particle_set.particle_list:
                 particle.weight = particle.weight / weight_sum
 
-        # Adaptive resampling: only resample when the weighted set is impoverished.
-        n_eff = self.particle_set.effective_sample_size()
-        resample_threshold = RESAMPLE_EFFECTIVE_RATIO * self.particle_set.num_particles
-        if n_eff < resample_threshold:
-            self.particle_set.resample(self.map.particle_range)
+        if self.algorithm_mode == PF_MODE_BASELINE:
+            # Baseline mode keeps the original simple resample-every-step behavior.
+            self.particle_set.resample(
+                self.map.particle_range,
+                enable_random_injection=False,
+                enable_roughening=False,
+            )
+        else:
+            # Variant mode: adaptive resampling with diversity preservation.
+            n_eff = self.particle_set.effective_sample_size()
+            resample_threshold = RESAMPLE_EFFECTIVE_RATIO * self.particle_set.num_particles
+            if n_eff < resample_threshold:
+                self.particle_set.resample(self.map.particle_range)
 
         self.particle_set.update_mean_state()
         self.state_estimate = self.particle_set.mean_state

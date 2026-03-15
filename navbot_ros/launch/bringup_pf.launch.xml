@@ -3,12 +3,16 @@
     <arg name="rviz" default="false"/>
     <arg name="rviz_config" default="$(find-pkg-share navbot_ros)/config/navbot.rviz"/>
     <arg name="pf_known_start" default="true"/>
+    <arg name="active_pf" default="variant"/>
+    <arg name="publish_camera_image" default="false"/>
 
     <node pkg="tf2_ros" exec="static_transform_publisher" name="base_to_laser_tf" args="0 0 0 0 0 0 base_link laser_frame"/>
 
     <node name="joy" pkg="joy" exec="joy_node"/>
     <node name="bringup" pkg="navbot_ros" exec="robot_ros_node.py">
         <param name="pf_known_start" value="$(var pf_known_start)"/>
+        <param name="active_pf" value="$(var active_pf)"/>
+        <param name="publish_camera_image" value="$(var publish_camera_image)"/>
     </node>
 
     <node name="guides" pkg="navbot_ros" exec="publish_guides.py"/>

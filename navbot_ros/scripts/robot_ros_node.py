@@ -2,6 +2,7 @@
 """Headless robot control with ROS odometry publishing."""
 
 import math
+import random
 import time
 
 import cv2
@@ -14,7 +15,7 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import Image, Joy, LaserScan
-from std_msgs.msg import Int64
+from std_msgs.msg import Bool, Int64
 from tf2_ros import StaticTransformBroadcaster, TransformBroadcaster
 from cv_bridge import CvBridge
 
@@ -84,12 +85,30 @@ class RobotRosNode(Node):
         self.scan_pub = self.create_publisher(LaserScan, "/scan", 10)
         self.lidar_distance_list = [float('inf')] * NUM_BINS
         self.camera_odom_pub = self.create_publisher(Odometry, "/odom/camera", 10)
-        self.pf_odom_pub = self.create_publisher(Odometry, "/odom/pf", 10)
+        self.pf_baseline_odom_pub = self.create_publisher(Odometry, "/odom/pf_baseline", 10)
+        self.pf_variant_odom_pub = self.create_publisher(Odometry, "/odom/pf_variant", 10)
+        self.pf_active_odom_pub = self.create_publisher(Odometry, "/odom/pf_active", 10)
+        self.particle_cloud_baseline_pub = self.create_publisher(
+            PoseArray, "/pf/particles_baseline", 10
+        )
+        self.particle_cloud_variant_pub = self.create_publisher(
+            PoseArray, "/pf/particles_variant", 10
+        )
+        self.particle_cloud_active_pub = self.create_publisher(
+            PoseArray, "/pf/particles_active", 10
+        )
+        # Keep legacy active-particles topic for compatibility.
         self.particle_cloud_pub = self.create_publisher(PoseArray, "/pf/particles", 10)
         self.encoder_count_pub = self.create_publisher(Int64, "/encoder_count", 10)
         self.wheel_odom_pub = self.create_publisher(Odometry, "/odom/wheel", 10)
         self.image_pub = self.create_publisher(Image, "/camera/image", 10)
+        self.camera_gt_valid_pub = self.create_publisher(Bool, "/camera_gt_valid", 10)
         self.declare_parameter("pf_known_start", True)
+        self.declare_parameter("active_pf", "variant")
+        self.declare_parameter("publish_camera_image", False)
+        self.publish_camera_image_enabled = bool(
+            self.get_parameter("publish_camera_image").value
+        )
         self.cv_bridge = CvBridge()
         self.marker_length = float(parameters.marker_length)
         self.camera_matrix = np.asarray(parameters.camera_matrix)
@@ -102,6 +121,10 @@ class RobotRosNode(Node):
         self.joy_buttons = []
         self.create_subscription(Joy, "/joy", self._joy_callback, 10)
         self.publish_static_transforms()
+        self.get_logger().info(
+            "Camera processing enabled for /odom/camera. "
+            f"/camera/image publishing is {'on' if self.publish_camera_image_enabled else 'off'}."
+        )
 
     def _joy_callback(self, msg: Joy) -> None:
         self.joy_axes = list(msg.axes)
@@ -266,7 +289,7 @@ class RobotRosNode(Node):
         cov[4, 4] = pitch_var
         return cov
 
-    def publish_pf_odom(self, state_mean: State) -> None:
+    def publish_pf_odom(self, state_mean: State, odom_pub, publish_tf: bool = False) -> None:
         if state_mean is None:
             return
 
@@ -298,20 +321,21 @@ class RobotRosNode(Node):
         )
         odom.pose.covariance = cov.flatten().tolist()
 
-        self.pf_odom_pub.publish(odom)
+        odom_pub.publish(odom)
 
-        transform = TransformStamped()
-        transform.header.stamp = stamp
-        transform.header.frame_id = "odom"
-        transform.child_frame_id = "base_link"
-        transform.transform.translation.x = x
-        transform.transform.translation.y = y
-        transform.transform.translation.z = 0.0
-        transform.transform.rotation.x = float(qx)
-        transform.transform.rotation.y = float(qy)
-        transform.transform.rotation.z = float(qz)
-        transform.transform.rotation.w = float(qw)
-        self.tf_broadcaster.sendTransform(transform)
+        if publish_tf:
+            transform = TransformStamped()
+            transform.header.stamp = stamp
+            transform.header.frame_id = "odom"
+            transform.child_frame_id = "base_link"
+            transform.transform.translation.x = x
+            transform.transform.translation.y = y
+            transform.transform.translation.z = 0.0
+            transform.transform.rotation.x = float(qx)
+            transform.transform.rotation.y = float(qy)
+            transform.transform.rotation.z = float(qz)
+            transform.transform.rotation.w = float(qw)
+            self.tf_broadcaster.sendTransform(transform)
 
     def publish_wheel_odom(self, state_mean, state_covariance) -> None:
         if state_mean is None or len(state_mean) < 3:
@@ -346,7 +370,7 @@ class RobotRosNode(Node):
 
         self.wheel_odom_pub.publish(odom)
 
-    def publish_particle_cloud(self, particle_set) -> None:
+    def publish_particle_cloud(self, particle_set, particle_cloud_pub) -> None:
         if particle_set is None or len(particle_set.particle_list) == 0:
             return
 
@@ -370,7 +394,7 @@ class RobotRosNode(Node):
             poses.append(pose)
 
         msg.poses = poses
-        self.particle_cloud_pub.publish(msg)
+        particle_cloud_pub.publish(msg)
 
     def publish_image(self, frame: np.ndarray) -> None:
         msg = self.cv_bridge.cv2_to_imgmsg(frame, encoding="bgr8")
@@ -382,6 +406,11 @@ class RobotRosNode(Node):
         msg = Int64()
         msg.data = int(encoder_counts)
         self.encoder_count_pub.publish(msg)
+
+    def publish_camera_gt_valid(self, is_valid: bool) -> None:
+        msg = Bool()
+        msg.data = bool(is_valid)
+        self.camera_gt_valid_pub.publish(msg)
 
     def process_frame(self, frame: np.ndarray):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -418,24 +447,52 @@ def main() -> None:
     rclpy.init()
     ros_node = RobotRosNode()
     robot, udp = connect_robot()
-    pf_map = Map(parameters.wall_corner_list)
+    pf_map_baseline = Map(parameters.wall_corner_list)
+    pf_map_variant = Map(parameters.wall_corner_list)
     pf_known_start = bool(ros_node.get_parameter("pf_known_start").value)
+    active_pf = str(ros_node.get_parameter("active_pf").value).strip().lower()
+    if active_pf not in ("baseline", "variant"):
+        ros_node.get_logger().warn(
+            f"Invalid active_pf='{active_pf}', defaulting to 'variant'."
+        )
+        active_pf = "variant"
+    ros_node.get_logger().info(
+        f"Running dual PFs (baseline + variant); RViz/TF active_pf='{active_pf}'."
+    )
     if not pf_known_start:
-        pf_map.particle_range = [
+        guide_particle_range = [
             0.0,
             GUIDE_FIELD_WIDTH_X_M,
             -0.5 * GUIDE_FIELD_HEIGHT_Y_M,
             0.5 * GUIDE_FIELD_HEIGHT_Y_M,
         ]
-    pf_initial_state = State(0.0, 0.0, 0.0)
-    pf_state_stdev = State(0.1, 0.1, 0.1)
-    particle_filter = ParticleFilter(
+        pf_map_baseline.particle_range = list(guide_particle_range)
+        pf_map_variant.particle_range = list(guide_particle_range)
+    baseline_initial_state = State(0.0, 0.0, 0.0)
+    variant_initial_state = State(0.0, 0.0, 0.0)
+    baseline_state_stdev = State(0.1, 0.1, 0.1)
+    variant_state_stdev = State(0.1, 0.1, 0.1)
+    baseline_rng = random.Random()
+    variant_rng = random.Random()
+    pf_baseline = ParticleFilter(
         parameters.num_particles,
-        pf_map,
-        initial_state=pf_initial_state,
-        state_stdev=pf_state_stdev,
+        pf_map_baseline,
+        initial_state=baseline_initial_state,
+        state_stdev=baseline_state_stdev,
         known_start_state=pf_known_start,
         encoder_counts_0=robot.robot_sensor_signal.encoder_counts,
+        algorithm_mode="baseline",
+        rng=baseline_rng,
+    )
+    pf_variant = ParticleFilter(
+        parameters.num_particles,
+        pf_map_variant,
+        initial_state=variant_initial_state,
+        state_stdev=variant_state_stdev,
+        known_start_state=pf_known_start,
+        encoder_counts_0=robot.robot_sensor_signal.encoder_counts,
+        algorithm_mode="variant",
+        rng=variant_rng,
     )
     wheel_ekf = ExtendedKalmanFilter(
         x_0=[0.0, 0.0, 0.0],
@@ -489,7 +546,8 @@ def main() -> None:
                 if sensor_signal_ready:
                     wheel_last_encoder_count = encoder_counts
                     pf_previous_encoder_count = encoder_counts
-                    particle_filter.last_encoder_counts = encoder_counts
+                    pf_baseline.last_encoder_counts = encoder_counts
+                    pf_variant.last_encoder_counts = encoder_counts
                     last_loop_time = now
                     pf_last_motion_time = now
                     sensor_initialized = True
@@ -523,22 +581,48 @@ def main() -> None:
                         ],
                         dtype=float,
                     )
-                    # Camera odometry stays reference-only; PF correction remains lidar-only in ParticleFilter.update().
-                    particle_filter.update(
-                        pf_control, robot.robot_sensor_signal, pf_delta_t
-                    )
+                    # Both PFs process the exact same live motion+lidar input each step.
+                    # Camera odometry stays reference-only and is not used by PF correction.
+                    pf_baseline.update(pf_control, robot.robot_sensor_signal, pf_delta_t)
+                    pf_variant.update(pf_control, robot.robot_sensor_signal, pf_delta_t)
                 pf_previous_encoder_count = encoder_counts
 
-            ros_node.publish_pf_odom(particle_filter.particle_set.mean_state)
-            ros_node.publish_particle_cloud(particle_filter.particle_set)
+            ros_node.publish_pf_odom(
+                pf_baseline.particle_set.mean_state,
+                ros_node.pf_baseline_odom_pub,
+                publish_tf=False,
+            )
+            ros_node.publish_pf_odom(
+                pf_variant.particle_set.mean_state,
+                ros_node.pf_variant_odom_pub,
+                publish_tf=False,
+            )
+            ros_node.publish_particle_cloud(
+                pf_baseline.particle_set, ros_node.particle_cloud_baseline_pub
+            )
+            ros_node.publish_particle_cloud(
+                pf_variant.particle_set, ros_node.particle_cloud_variant_pub
+            )
+            active_filter = pf_baseline if active_pf == "baseline" else pf_variant
+            ros_node.publish_pf_odom(
+                active_filter.particle_set.mean_state,
+                ros_node.pf_active_odom_pub,
+                publish_tf=True,
+            )
+            ros_node.publish_particle_cloud(
+                active_filter.particle_set, ros_node.particle_cloud_active_pub
+            )
+            ros_node.publish_particle_cloud(active_filter.particle_set, ros_node.particle_cloud_pub)
             ros_node.publish_wheel_odom(
                 wheel_ekf.state_mean,
                 wheel_ekf.state_covariance,
             )
+            camera_gt_valid = False
             frame = getattr(robot.camera_sensor, "last_frame", None)
             if frame is not None:
                 vis, markers = ros_node.process_frame(frame)
-                ros_node.publish_image(vis)
+                if ros_node.publish_camera_image_enabled:
+                    ros_node.publish_image(vis)
                 if markers:
                     _, tvec, rvec = markers[0]
                     ros_node.publish_marker_true_tf(tvec, rvec)
@@ -546,6 +630,8 @@ def main() -> None:
                         tvec, rvec
                     )
                     ros_node.publish_camera_odom(planar_pose)
+                    camera_gt_valid = True
+            ros_node.publish_camera_gt_valid(camera_gt_valid)
             rclpy.spin_once(ros_node, timeout_sec=0.0)
 
             elapsed = time.perf_counter() - loop_start
