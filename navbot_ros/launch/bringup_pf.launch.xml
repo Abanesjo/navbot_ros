@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<launch>
+    <arg name="rviz" default="false"/>
+    <arg name="rviz_config" default="$(find-pkg-share navbot_ros)/config/navbot.rviz"/>
+    <arg name="pf_known_start" default="true"/>
+    <!-- variant or baseline -->
+    <arg name="active_pf" default="variant"/> 
+    <arg name="pf_initial_x" default="0.0"/>
+    <arg name="pf_initial_y" default="0.0"/>
+    <arg name="pf_initial_theta" default="0.0"/>
+
+    <!-- Static TF: base_link to laser_frame (identity) -->
+    <node pkg="tf2_ros" exec="static_transform_publisher" name="base_to_laser"
+          args="0 0 0 0 0 0 base_link laser_frame"/>
+
+    <!-- Static TF: map to odom (identity, needed for map_server display in RViz) -->
+    <node pkg="tf2_ros" exec="static_transform_publisher" name="map_to_odom"
+          args="0 0 0 0 0 0 map odom"/>
+
+    <node name="joy" pkg="joy" exec="joy_node"/>
+
+    <node name="bringup" pkg="navbot_ros" exec="robot_ros_node.py">
+        <param name="covariance_scaling" value="1.0"/>
+        <param name="pf_known_start" value="$(var pf_known_start)"/>
+        <param name="active_pf" value="$(var active_pf)"/>
+        <param name="pf_initial_x" value="$(var pf_initial_x)"/>
+        <param name="pf_initial_y" value="$(var pf_initial_y)"/>
+        <param name="pf_initial_theta" value="$(var pf_initial_theta)"/>
+    </node>
+
+    <node name="guides" pkg="navbot_ros" exec="publish_guides.py"/>
+    <node name="path_publisher" pkg="navbot_ros" exec="path_publisher.py"/>
+    <node name="lidar_markers" pkg="navbot_ros" exec="lidar_marker_node.py"/>
+
+    <!-- Map server for RViz visualization -->
+    <node name="map_server" pkg="nav2_map_server" exec="map_server">
+        <param name="yaml_filename" value="$(find-pkg-share navbot_ros)/map/map_processed.yaml"/>
+    </node>
+    <executable cmd="bash -c 'sleep 2 &amp;&amp; ros2 lifecycle set /map_server configure &amp;&amp; ros2 lifecycle set /map_server activate'" output="screen"/>
+
+    <group if="$(var rviz)">
+        <node name="rviz" pkg="rviz2" exec="rviz2" args="-d $(var rviz_config)"/>
+    </group>
+</launch>

@@ -11,7 +11,7 @@ find_package(ament_cmake_python REQUIRED)
 
 
 install(
-  DIRECTORY config launch
+  DIRECTORY config launch map
   DESTINATION share/${PROJECT_NAME}
 )
 

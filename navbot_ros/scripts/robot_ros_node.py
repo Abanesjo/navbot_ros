@@ -2,13 +2,14 @@
 """Headless robot control with ROS odometry publishing."""
 
 import math
+import random
 import time
 
 import cv2
 import cv2.aruco as aruco
 import numpy as np
 import rclpy
-from geometry_msgs.msg import TransformStamped
+from geometry_msgs.msg import Pose, PoseArray, TransformStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from scipy.spatial.transform import Rotation
@@ -19,6 +20,7 @@ from cv_bridge import CvBridge
 from navbot_ros import parameters
 from navbot_ros import robot_python_code
 from navbot_ros.extended_kalman_filter import ExtendedKalmanFilter
+from navbot_ros.particle_filter import Map, ParticleFilter, State
 from navbot_ros.robot import Robot
 
 
@@ -80,8 +82,15 @@ class RobotRosNode(Node):
         self.camera_odom_pub = self.create_publisher(Odometry, "/odom/camera", 10)
         self.filtered_odom_pub = self.create_publisher(Odometry, "/odom/filtered", 10)
         self.wheel_odom_pub = self.create_publisher(Odometry, "/odom/wheel", 10)
+        self.pf_odom_pub = self.create_publisher(Odometry, "/odom/pf", 10)
+        self.particle_cloud_pub = self.create_publisher(PoseArray, "/pf/particles", 10)
         self.image_pub = self.create_publisher(Image, "/camera/image", 10)
         self.declare_parameter("covariance_scaling", 1.0)
+        self.declare_parameter("pf_known_start", True)
+        self.declare_parameter("active_pf", "variant")
+        self.declare_parameter("pf_initial_x", 0.0)
+        self.declare_parameter("pf_initial_y", 0.0)
+        self.declare_parameter("pf_initial_theta", 0.0)
         self.cv_bridge = CvBridge()
         self.marker_length = float(parameters.marker_length)
         self.camera_matrix = np.asarray(parameters.camera_matrix)
@@ -333,6 +342,80 @@ class RobotRosNode(Node):
 
         self.wheel_odom_pub.publish(odom)
 
+    def publish_pf_odom(self, state_mean, publish_tf: bool = False) -> None:
+        if state_mean is None:
+            return
+
+        x = float(state_mean.x)
+        y = float(state_mean.y)
+        yaw = float(state_mean.theta)
+        qx, qy, qz, qw = Rotation.from_euler("xyz", [0.0, 0.0, yaw]).as_quat(
+            canonical=False
+        )
+
+        stamp = self.get_clock().now().to_msg()
+        odom = Odometry()
+        odom.header.stamp = stamp
+        odom.header.frame_id = "odom"
+        odom.child_frame_id = "base_link"
+        odom.pose.pose.position.x = x
+        odom.pose.pose.position.y = y
+        odom.pose.pose.position.z = 0.0
+        odom.pose.pose.orientation.x = float(qx)
+        odom.pose.pose.orientation.y = float(qy)
+        odom.pose.pose.orientation.z = float(qz)
+        odom.pose.pose.orientation.w = float(qw)
+
+        cov = self.build_pose_covariance(
+            parameters.Q3,
+            parameters.z_var,
+            parameters.roll_var,
+            parameters.pitch_var,
+        )
+        odom.pose.covariance = cov.flatten().tolist()
+
+        self.pf_odom_pub.publish(odom)
+
+        if publish_tf:
+            transform = TransformStamped()
+            transform.header.stamp = stamp
+            transform.header.frame_id = "odom"
+            transform.child_frame_id = "base_link"
+            transform.transform.translation.x = x
+            transform.transform.translation.y = y
+            transform.transform.translation.z = 0.0
+            transform.transform.rotation.x = float(qx)
+            transform.transform.rotation.y = float(qy)
+            transform.transform.rotation.z = float(qz)
+            transform.transform.rotation.w = float(qw)
+            self.tf_broadcaster.sendTransform(transform)
+
+    def publish_particle_cloud(self, particle_set) -> None:
+        if particle_set is None or len(particle_set.particle_list) == 0:
+            return
+
+        msg = PoseArray()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = "odom"
+        poses = []
+
+        for particle in particle_set.particle_list:
+            pose = Pose()
+            pose.position.x = float(particle.state.x)
+            pose.position.y = float(particle.state.y)
+            pose.position.z = 0.0
+            qx, qy, qz, qw = Rotation.from_euler(
+                "xyz", [0.0, 0.0, float(particle.state.theta)]
+            ).as_quat(canonical=False)
+            pose.orientation.x = float(qx)
+            pose.orientation.y = float(qy)
+            pose.orientation.z = float(qz)
+            pose.orientation.w = float(qw)
+            poses.append(pose)
+
+        msg.poses = poses
+        self.particle_cloud_pub.publish(msg)
+
     def publish_image(self, frame: np.ndarray) -> None:
         msg = self.cv_bridge.cv2_to_imgmsg(frame, encoding="bgr8")
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -374,6 +457,8 @@ def main() -> None:
     rclpy.init()
     ros_node = RobotRosNode()
     robot, udp = connect_robot()
+
+    # --- EKF setup (preserved) ---
     wheel_ekf = ExtendedKalmanFilter(
         x_0=[0.0, 0.0, 0.0],
         Sigma_0=parameters.I3,
@@ -383,9 +468,57 @@ def main() -> None:
     wheel_last_encoder_count = robot.robot_sensor_signal.encoder_counts
     wheel_initialized = False
 
+    # --- PF setup ---
+    pf_known_start = bool(ros_node.get_parameter("pf_known_start").value)
+    active_pf_mode = str(ros_node.get_parameter("active_pf").value).strip().lower()
+    pf_initial_x = float(ros_node.get_parameter("pf_initial_x").value)
+    pf_initial_y = float(ros_node.get_parameter("pf_initial_y").value)
+    pf_initial_theta = float(ros_node.get_parameter("pf_initial_theta").value)
+
+    if active_pf_mode not in ("baseline", "variant"):
+        ros_node.get_logger().warn(
+            f"Invalid active_pf='{active_pf_mode}', defaulting to 'variant'."
+        )
+        active_pf_mode = "variant"
+
+    pf_map = Map(parameters.wall_corner_list)
+    pf_initial_state = State(pf_initial_x, pf_initial_y, pf_initial_theta)
+    pf_state_stdev = State(0.1, 0.1, 0.1)
+
+    pf_baseline = ParticleFilter(
+        parameters.num_particles,
+        pf_map,
+        initial_state=pf_initial_state,
+        state_stdev=pf_state_stdev,
+        known_start_state=pf_known_start,
+        encoder_counts_0=robot.robot_sensor_signal.encoder_counts,
+        algorithm_mode="baseline",
+        rng=random.Random(),
+    )
+    pf_variant = ParticleFilter(
+        parameters.num_particles,
+        pf_map,
+        initial_state=pf_initial_state,
+        state_stdev=pf_state_stdev,
+        known_start_state=pf_known_start,
+        encoder_counts_0=robot.robot_sensor_signal.encoder_counts,
+        algorithm_mode="variant",
+        rng=random.Random(),
+    )
+
+    active_pf = pf_baseline if active_pf_mode == "baseline" else pf_variant
+    pf_previous_encoder_count = robot.robot_sensor_signal.encoder_counts
+
+    ros_node.get_logger().info(
+        f"PF initialized: known_start={pf_known_start}, active='{active_pf_mode}', "
+        f"initial=({pf_initial_x}, {pf_initial_y}, {pf_initial_theta})"
+    )
+
     logging_active = False
     log_toggle_button_prev = False
     last_loop_time = time.perf_counter()
+    pf_last_motion_time = last_loop_time
+    sensor_initialized = False
 
     try:
         while rclpy.ok():
@@ -417,17 +550,26 @@ def main() -> None:
             ros_node.publish_lidar(ros_node.get_clock().now().to_msg())
 
             encoder_counts = robot.robot_sensor_signal.encoder_counts
+            sensor_signal_ready = robot.robot_sensor_signal.num_lidar_rays > 0
             now = time.perf_counter()
-            if not wheel_initialized:
-                wheel_last_encoder_count = encoder_counts
-                last_loop_time = now
-                wheel_initialized = True
+
+            if not sensor_initialized:
+                if sensor_signal_ready:
+                    wheel_last_encoder_count = encoder_counts
+                    pf_previous_encoder_count = encoder_counts
+                    pf_baseline.last_encoder_counts = encoder_counts
+                    pf_variant.last_encoder_counts = encoder_counts
+                    last_loop_time = now
+                    pf_last_motion_time = now
+                    sensor_initialized = True
+                    wheel_initialized = True
             else:
                 delta_t = now - last_loop_time
                 last_loop_time = now
                 if delta_t <= 0.0:
                     delta_t = CONTROL_PERIOD_S
 
+                # --- EKF update (preserved) ---
                 delta_counts = encoder_counts - wheel_last_encoder_count
                 wheel_last_encoder_count = encoder_counts
                 v = wheel_ekf.motion_model.get_linear_velocity(
@@ -438,6 +580,26 @@ def main() -> None:
                 )
                 wheel_ekf.update([v, phi], None, delta_t)
 
+                # --- PF update ---
+                motion_update = encoder_counts != pf_previous_encoder_count
+                if motion_update:
+                    pf_delta_t = now - pf_last_motion_time
+                    pf_last_motion_time = now
+                    if pf_delta_t <= 0.0:
+                        pf_delta_t = CONTROL_PERIOD_S
+
+                    pf_control = np.array(
+                        [
+                            robot.robot_sensor_signal.encoder_counts,
+                            robot.robot_sensor_signal.steering,
+                        ],
+                        dtype=float,
+                    )
+                    pf_baseline.update(pf_control, robot.robot_sensor_signal, pf_delta_t)
+                    pf_variant.update(pf_control, robot.robot_sensor_signal, pf_delta_t)
+                pf_previous_encoder_count = encoder_counts
+
+            # Publish EKF odometry (preserved)
             ros_node.publish_filtered_odom(
                 robot.extended_kalman_filter.state_mean,
                 robot.extended_kalman_filter.state_covariance,
@@ -446,6 +608,15 @@ def main() -> None:
                 wheel_ekf.state_mean,
                 wheel_ekf.state_covariance,
             )
+
+            # Publish PF odometry and particle cloud
+            active_pf = pf_baseline if active_pf_mode == "baseline" else pf_variant
+            ros_node.publish_pf_odom(
+                active_pf.particle_set.mean_state,
+                publish_tf=True,
+            )
+            ros_node.publish_particle_cloud(active_pf.particle_set)
+
             frame = getattr(robot.camera_sensor, "last_frame", None)
             if frame is not None:
                 vis, markers = ros_node.process_frame(frame)
