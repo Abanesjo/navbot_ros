@@ -95,4 +95,15 @@ As part of the particle filter process, the map is used to compute a distance fi
 </p>
 
 ### Particle Filter Implementation
-TODO
+The particle filter fuses wheel odometry with LiDAR data, using a prebuilt map to perform localization. 
+
+The algorithm can be run via
+
+```
+source install/setup.bash
+ros2 launch navbot_ros bringup_pf.launch.xml
+```
+<p align="center">
+    <img src="docs/pf.gif" alt="PF sample">
+    <a href="https://youtu.be/JveiTIMxfvI">https://youtu.be/JveiTIMxfvI</a>
+</p>

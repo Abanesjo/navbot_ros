@@ -91,6 +91,10 @@ class RobotRosNode(Node):
         self.declare_parameter("pf_initial_x", 0.0)
         self.declare_parameter("pf_initial_y", 0.0)
         self.declare_parameter("pf_initial_theta", 0.0)
+        self.declare_parameter("pf_range_x_min", -2.42)
+        self.declare_parameter("pf_range_x_max", 4.04)
+        self.declare_parameter("pf_range_y_min", -1.78)
+        self.declare_parameter("pf_range_y_max", 3.41)
         self.cv_bridge = CvBridge()
         self.marker_length = float(parameters.marker_length)
         self.camera_matrix = np.asarray(parameters.camera_matrix)
@@ -482,6 +486,13 @@ def main() -> None:
         active_pf_mode = "variant"
 
     pf_map = Map(parameters.wall_corner_list)
+    pf_range = [
+        float(ros_node.get_parameter("pf_range_x_min").value),
+        float(ros_node.get_parameter("pf_range_x_max").value),
+        float(ros_node.get_parameter("pf_range_y_min").value),
+        float(ros_node.get_parameter("pf_range_y_max").value),
+    ]
+    pf_map.particle_range = pf_range
     pf_initial_state = State(pf_initial_x, pf_initial_y, pf_initial_theta)
     pf_state_stdev = State(0.1, 0.1, 0.1)
 
